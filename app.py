@@ -3,8 +3,8 @@ import replicate
 import os
 import tempfile
 
-# حقن التوكين الجديد والنظيف الخاص بك مباشرة داخل بيئة التشغيل
-os.environ["REPLICATE_API_TOKEN"] = "r8_aeg9IioLuMuqlrzz9gkd7ZaN5gNIJrf28z5CV"
+# قراءة التوكن بأمان من إعدادات Streamlit Secrets
+os.environ["REPLICATE_API_TOKEN"] = st.secrets["REPLICATE_API_TOKEN"]
 
 st.set_page_config(
     page_title="Enhancer AI - Zayed",

@@ -1,15 +1,15 @@
 import streamlit as st
-import replicate
-import os
+from gradio_client import Client, handle_file
 import tempfile
-
-# قراءة التوكن بأمان من إعدادات Streamlit Secrets
-os.environ["REPLICATE_API_TOKEN"] = st.secrets["REPLICATE_API_TOKEN"]
+import os
 
 st.set_page_config(
     page_title="Video Enhancer AI - Zayed",
     layout="centered"
 )
+
+# زيادة حد حجم الرفع في Streamlit
+st.config.set_option("server.maxUploadSize", 500)
 
 # واجهة الفخامة السوداء والذهبية المخصصة مع لمسة زهرية لإهداء فاطمة
 st.markdown("""
@@ -36,7 +36,7 @@ section[data-testid="stFileUploadDropzone"] div { color: #ffffff !important; }
 st.markdown("""
 <div class="header-box">
     <div class="main-title">Video Enhancer AI - Zayed</div>
-    <div class="sub-title">منصة توضيح وتنقيتها وترقية جودة الفيديوهات بالذكاء الاصطناعي مع الحفاظ على الألوان الطبيعية والوجوه</div>
+    <div class="sub-title">منصة توضيح وترقية جودة الفيديوهات مجاناً بالذكاء الاصطناعي مع الحفاظ على الألوان الطبيعية والوجوه</div>
     <div class="author-badge">تطوير: زايد العبادي | <span class="fatima-badge">فاطمة 🩷</span></div>
 </div>
 """, unsafe_allow_html=True)
@@ -52,20 +52,20 @@ if uploaded_vid is not None:
     st.caption("الفيديو الأصلي:")
     st.video(input_vid_path)
 
-    if st.button("بدء المعالجة السريعة وترقية الجودة (Fast 4K)", key="btn_vid"):
-        with st.spinner("جاري معالجة إطارات الفيديو بسرعة مع الحفاظ على الألوان والمظاهر الطبيعية..."):
+    if st.button("بدء المعالجة الفورية وتوضيح الجودة (Free AI)", key="btn_vid"):
+        with st.spinner("جاري الاتصال بمحرك Hugging Face لمعالجة الفيديو مجاناً بدون اشتراكات..."):
             try:
-                with open(input_vid_path, "rb") as video_file:
-                    # تم استبدال الهاش القديم باسم النموذج الرسمي المباشر لتجنب خطأ 422
-                    output = replicate.run(
-                        "lucataco/real-esrgan-video:3e56ce4b57863bd03048b42bc09bdd4db20d427cca5fde9d8ae4dc60e1bb4775",
-                        input={
-                            "video_path": video_file,
-                            "model": "RealESRGAN_x4plus",
-                            "resolution": "HD"  # اختيار HD لضمان السرعة العالية وعدم إفساد ملامح الوجه والألوان
-                        }
-                    )
-                st.success("تم تحسين الفيديو بنجاح!")
-                st.video(output)
+                # الاستعانة بسيرفر Hugging Face المجاني لمعالجة الفيديو
+                client = Client("r3gm/video_upscaler")
+                
+                result = client.predict(
+                    video_path=handle_file(input_vid_path),
+                    upscaler="RealESRGAN_x4plus", # الموديل الأفضل لرفع الجودة والحفاظ على الطبيعية
+                    upscale_factor=2,               # درجة التكبير والتوضيح
+                    api_name="/predict"
+                )
+                
+                st.success("تم تحسين الفيديو مجاناً بنجاح!")
+                st.video(result)
             except Exception as e:
-                st.error(f"حدث خطأ أثناء معالجة الفيديو: {e}")
+                st.error(f"حدث خطأ أثناء المعالجة: {e}")

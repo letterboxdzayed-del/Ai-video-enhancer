@@ -11,9 +11,6 @@ st.set_page_config(
     layout="centered"
 )
 
-# زيادة حد حجم الرفع وتسريعه في Streamlit
-st.config.set_option("server.maxUploadSize", 500)
-
 # واجهة الفخامة السوداء والذهبية المخصصة مع لمسة زهرية لإهداء فاطمة
 st.markdown("""
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -35,7 +32,7 @@ section[data-testid="stFileUploadDropzone"] div { color: #ffffff !important; }
 </style>
 """, unsafe_allow_html=True)
 
-# الهيدر مع إضافة عبارة الإهداء لفاطمة بنفس الخط والستايل
+# الهيدر مع عبارة الإهداء لفاطمة
 st.markdown("""
 <div class="header-box">
     <div class="main-title">Video Enhancer AI - Zayed</div>
@@ -44,11 +41,10 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# رفع الفيديو بصيغ متعددة
+# رفع الفيديو
 uploaded_vid = st.file_uploader("اختر فيديو للرفع (MP4, MOV, AVI, WEBM)", type=["mp4", "mov", "avi", "webm"], key="vid_up")
 
 if uploaded_vid is not None:
-    # استخدام التخزين المؤقت المباشر بدون إبطاء للنظام
     with tempfile.NamedTemporaryFile(delete=False, suffix='.mp4') as tfile:
         tfile.write(uploaded_vid.getbuffer())
         input_vid_path = tfile.name
@@ -57,19 +53,19 @@ if uploaded_vid is not None:
     st.video(input_vid_path)
 
     if st.button("بدء المعالجة السريعة وترقية الجودة (Fast 4K)", key="btn_vid"):
-        with st.spinner("جاري معالجة إطارات الفيديو بأقصى سرعة مع الحفاظ على الألوان والمظاهر الطبيعية..."):
+        with st.spinner("جاري معالجة إطارات الفيديو بسرعة مع الحفاظ على الألوان والمظاهر الطبيعية..."):
             try:
-                # استخدام نموذج Real-ESRGAN الفائق والمنظم للسرعة
                 with open(input_vid_path, "rb") as video_file:
+                    # تم استبدال الهاش القديم باسم النموذج الرسمي المباشر لتجنب خطأ 422
                     output = replicate.run(
-                        "nightmareai/real-esrgan-video:b150937a077439000a40d58852877a940f90761e06ff4c3b6f0e30922e4c431d",
+                        "lucataco/real-esrgan-video:3e56ce4b57863bd03048b42bc09bdd4db20d427cca5fde9d8ae4dc60e1bb4775",
                         input={
-                            "video": video_file,
-                            "scale": 2,              # موازنة الدقة للحفاظ على سرعة المعالجة والمنظر الطبيعي
-                            "face_enhance": False   # إيقاف التعديل الثقيل للوجوه لتسريع الوقت ومنع التشويه
+                            "video_path": video_file,
+                            "model": "RealESRGAN_x4plus",
+                            "resolution": "HD"  # اختيار HD لضمان السرعة العالية وعدم إفساد ملامح الوجه والألوان
                         }
                     )
-                st.success("تم تحسين الفيديو بنجاح وخلال وقت قياسي!")
+                st.success("تم تحسين الفيديو بنجاح!")
                 st.video(output)
             except Exception as e:
                 st.error(f"حدث خطأ أثناء معالجة الفيديو: {e}")

@@ -2,8 +2,8 @@ import streamlit as st
 import cv2
 import numpy as np
 import tempfile
+import subprocess
 import os
-from moviepy.editor import VideoFileClip
 
 st.set_page_config(
     page_title="Video Enhancer AI - Zayed",
@@ -43,14 +43,14 @@ st.markdown("""
 uploaded_vid = st.file_uploader("اختر فيديو للرفع (MP4, MOV, AVI, WEBM)", type=["mp4", "mov", "avi", "webm"], key="vid_up")
 
 def enhance_frame_advanced(frame):
-    # 1. تنعيم البشرة والوجوه مع الحفاظ على الأطراف والحدود الحادة (Bilateral Filter)
+    # 1. تنعيم البشرة والوجوه مع الحفاظ على الحدود الحادة
     smoothed = cv2.bilateralFilter(frame, d=7, sigmaColor=50, sigmaSpace=50)
 
-    # 2. تحويل الصورة إلى الفضاء LAB للتحكم بالإضاءة بشكل مستقل دون تخريب الألوان
+    # 2. تحويل الصورة إلى الفضاء LAB للتحكم بالإضاءة والتباين
     lab = cv2.cvtColor(smoothed, cv2.COLOR_BGR2LAB)
     l, a, b = cv2.split(lab)
 
-    # 3. تطبيق موازن التباين التكيّفي الذكي (CLAHE) لإبراز التفاصيل المخفية بالظلال
+    # 3. تطبيق موازن التباين التكيّفي (CLAHE)
     clahe = cv2.createCLAHE(clipLimit=2.5, tileGridSize=(8, 8))
     cl = clahe.apply(l)
 
@@ -64,7 +64,7 @@ def enhance_frame_advanced(frame):
 
     return final_frame
 
-def process_video(input_path, output_path):
+def process_video_with_audio(input_path, output_path):
     cap = cv2.VideoCapture(input_path)
     width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
@@ -85,17 +85,23 @@ def process_video(input_path, output_path):
     cap.release()
     out.release()
 
-    # إعادة دمج الصوت الأصلي للفيديو
+    # دمج الصوت الأصلي مع الفيديو المحسّن عبر ffmpeg
     try:
-        original_clip = VideoFileClip(input_path)
-        enhanced_clip = VideoFileClip(temp_no_audio)
-        if original_clip.audio is not None:
-            final_clip = enhanced_clip.set_audio(original_clip.audio)
-            final_clip.write_videofile(output_path, codec="libx264", audio_codec="aac", logger=None)
-        else:
-            enhanced_clip.write_videofile(output_path, codec="libx264", logger=None)
+        cmd = [
+            'ffmpeg', '-y',
+            '-i', temp_no_audio,
+            '-i', input_path,
+            '-c:v', 'copy',
+            '-c:a', 'aac',
+            '-map', '0:v:0',
+            '-map', '1:a:0?',
+            output_path
+        ]
+        subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
     except Exception:
-        os.rename(temp_no_audio, output_path)
+        # في حال عدم وجود مسار صوتي بالأساس يتم حفظ الفيديو المحسن فقط
+        if os.path.exists(temp_no_audio):
+            os.replace(temp_no_audio, output_path)
 
 if uploaded_vid is not None:
     with tempfile.NamedTemporaryFile(delete=False, suffix='.mp4') as tfile:
@@ -106,12 +112,13 @@ if uploaded_vid is not None:
     st.video(input_vid_path)
 
     if st.button("بدء المعالجة الذكية والتوضيح القوي", key="btn_vid"):
-        with st.spinner("جاري تنعيم الوجوه، موازنة التباين التكيفية، ورفع حدة الإطارات..."):
+        with st.spinner("جاري تنعيم الوجوه، موازنة التباين، ورفع حدة الإطارات مع الحفاظ على الصوت..."):
             try:
                 output_vid_path = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4').name
-                process_video(input_vid_path, output_vid_path)
+                process_video_with_audio(input_vid_path, output_vid_path)
                 
                 st.success("تم تحسين وتوضيح الفيديو بنجاح!")
                 st.video(output_vid_path)
             except Exception as e:
                 st.error(f"حدث خطأ أثناء المعالجة: {e}")
+

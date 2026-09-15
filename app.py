@@ -1,17 +1,16 @@
 import streamlit as st
-from gradio_client import Client, handle_file
+import cv2
+import numpy as np
 import tempfile
 import os
+from moviepy.editor import VideoFileClip
 
 st.set_page_config(
     page_title="Video Enhancer AI - Zayed",
     layout="centered"
 )
 
-# زيادة حد حجم الرفع في Streamlit
-st.config.set_option("server.maxUploadSize", 500)
-
-# واجهة الفخامة السوداء والذهبية المخصصة مع لمسة زهرية لإهداء فاطمة
+# تصميم الواجهة باللونين الأسود والذهبي مع لمسة وردية مخصصة لإهداء فاطمة
 st.markdown("""
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -32,17 +31,71 @@ section[data-testid="stFileUploadDropzone"] div { color: #ffffff !important; }
 </style>
 """, unsafe_allow_html=True)
 
-# الهيدر مع عبارة الإهداء لفاطمة
+# الهيدر المخصص
 st.markdown("""
 <div class="header-box">
     <div class="main-title">Video Enhancer AI - Zayed</div>
-    <div class="sub-title">منصة توضيح وترقية جودة الفيديوهات مجاناً بالذكاء الاصطناعي مع الحفاظ على الألوان الطبيعية والوجوه</div>
+    <div class="sub-title">محرك معالجة وتنعيم الملامح، معالجة الإضاءة التكيفية، ورفع حدة الفيديوهات المتقدم</div>
     <div class="author-badge">تطوير: زايد العبادي | <span class="fatima-badge">فاطمة 🩷</span></div>
 </div>
 """, unsafe_allow_html=True)
 
-# رفع الفيديو
 uploaded_vid = st.file_uploader("اختر فيديو للرفع (MP4, MOV, AVI, WEBM)", type=["mp4", "mov", "avi", "webm"], key="vid_up")
+
+def enhance_frame_advanced(frame):
+    # 1. تنعيم البشرة والوجوه مع الحفاظ على الأطراف والحدود الحادة (Bilateral Filter)
+    smoothed = cv2.bilateralFilter(frame, d=7, sigmaColor=50, sigmaSpace=50)
+
+    # 2. تحويل الصورة إلى الفضاء LAB للتحكم بالإضاءة بشكل مستقل دون تخريب الألوان
+    lab = cv2.cvtColor(smoothed, cv2.COLOR_BGR2LAB)
+    l, a, b = cv2.split(lab)
+
+    # 3. تطبيق موازن التباين التكيّفي الذكي (CLAHE) لإبراز التفاصيل المخفية بالظلال
+    clahe = cv2.createCLAHE(clipLimit=2.5, tileGridSize=(8, 8))
+    cl = clahe.apply(l)
+
+    # إعادة دمج القنوات الملونة
+    limg = cv2.merge((cl, a, b))
+    enhanced_color = cv2.cvtColor(limg, cv2.COLOR_LAB2BGR)
+
+    # 4. معالجة التحديد والحدة المتقدمة (Unsharp Masking)
+    gaussian_33 = cv2.GaussianBlur(enhanced_color, (0, 0), 2.0)
+    final_frame = cv2.addWeighted(enhanced_color, 1.6, gaussian_33, -0.6, 0)
+
+    return final_frame
+
+def process_video(input_path, output_path):
+    cap = cv2.VideoCapture(input_path)
+    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    fps = cap.get(cv2.CAP_PROP_FPS) or 30
+
+    temp_no_audio = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4').name
+    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+    out = cv2.VideoWriter(temp_no_audio, fourcc, fps, (width, height))
+
+    while cap.isOpened():
+        ret, frame = cap.read()
+        if not ret:
+            break
+
+        enhanced = enhance_frame_advanced(frame)
+        out.write(enhanced)
+
+    cap.release()
+    out.release()
+
+    # إعادة دمج الصوت الأصلي للفيديو
+    try:
+        original_clip = VideoFileClip(input_path)
+        enhanced_clip = VideoFileClip(temp_no_audio)
+        if original_clip.audio is not None:
+            final_clip = enhanced_clip.set_audio(original_clip.audio)
+            final_clip.write_videofile(output_path, codec="libx264", audio_codec="aac", logger=None)
+        else:
+            enhanced_clip.write_videofile(output_path, codec="libx264", logger=None)
+    except Exception:
+        os.rename(temp_no_audio, output_path)
 
 if uploaded_vid is not None:
     with tempfile.NamedTemporaryFile(delete=False, suffix='.mp4') as tfile:
@@ -52,20 +105,13 @@ if uploaded_vid is not None:
     st.caption("الفيديو الأصلي:")
     st.video(input_vid_path)
 
-    if st.button("بدء المعالجة الفورية وتوضيح الجودة (Free AI)", key="btn_vid"):
-        with st.spinner("جاري الاتصال بمحرك Hugging Face لمعالجة الفيديو مجاناً بدون اشتراكات..."):
+    if st.button("بدء المعالجة الذكية والتوضيح القوي", key="btn_vid"):
+        with st.spinner("جاري تنعيم الوجوه، موازنة التباين التكيفية، ورفع حدة الإطارات..."):
             try:
-                # الاستعانة بسيرفر Hugging Face المجاني لمعالجة الفيديو
-                client = Client("r3gm/video_upscaler")
+                output_vid_path = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4').name
+                process_video(input_vid_path, output_vid_path)
                 
-                result = client.predict(
-                    video_path=handle_file(input_vid_path),
-                    upscaler="RealESRGAN_x4plus", # الموديل الأفضل لرفع الجودة والحفاظ على الطبيعية
-                    upscale_factor=2,               # درجة التكبير والتوضيح
-                    api_name="/predict"
-                )
-                
-                st.success("تم تحسين الفيديو مجاناً بنجاح!")
-                st.video(result)
+                st.success("تم تحسين وتوضيح الفيديو بنجاح!")
+                st.video(output_vid_path)
             except Exception as e:
                 st.error(f"حدث خطأ أثناء المعالجة: {e}")

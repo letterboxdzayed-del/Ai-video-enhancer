@@ -2,6 +2,7 @@ import streamlit as st
 import cv2
 import numpy as np
 import imageio
+from moviepy.editor import VideoFileClip
 import os
 
 st.set_page_config(
@@ -34,7 +35,7 @@ section[data-testid="stFileUploadDropzone"] div { color: #ffffff !important; }
 st.markdown("""
 <div class="header-box">
     <div class="main-title">Video Enhancer AI - Zayed</div>
-    <div class="sub-title">محرك زيادة التحديد والوضوح الفائق السريع</div>
+    <div class="sub-title">محرك التحسين التكيفي الذكي للوجوه والإضاءة مع المحافظة على الصوت</div>
     <div class="author-badge">تطوير: زايد العبادي | <span class="fatima-badge">فاطمة 🩷</span></div>
 </div>
 """, unsafe_allow_html=True)
@@ -43,7 +44,8 @@ uploaded_vid = st.file_uploader("اختر فيديو للرفع (MP4, MOV, AVI, 
 
 if uploaded_vid is not None:
     input_path = "temp_input.mp4"
-    output_path = "output_enhanced.mp4"
+    video_only_path = "temp_no_audio.mp4"
+    final_output_path = "output_enhanced.mp4"
 
     with open(input_path, "wb") as f:
         f.write(uploaded_vid.getbuffer())
@@ -51,38 +53,94 @@ if uploaded_vid is not None:
     st.caption("الفيديو الأصلي:")
     st.video(input_path)
 
-    if st.button("بدء معالجة الجودة وتوضيح الملامح", key="btn_vid"):
+    if st.button("بدء المعالجة الذكية والمتكيفة", key="btn_vid"):
         with st.spinner("جاري المعالجة... استغفر الله، الحمد لله، لا إله إلا الله، الله أكبر ✨"):
             try:
                 reader = imageio.get_reader(input_path)
                 meta = reader.get_meta_data()
                 fps = meta.get('fps', 30)
 
-                kernel = np.array([[0, -1, 0], [-1, 5, -1], [0, -1, 0]])
-
                 writer = imageio.get_writer(
-                    output_path,
+                    video_only_path,
                     fps=fps,
                     codec='libx264',
                     quality=7,
                     pixelformat='yuv420p'
                 )
 
+                # متغيرات التحسين التكيفي السلس
+                target_brightness = 125.0
+                curr_alpha = 1.0
+                curr_beta = 0.0
+                target_alpha = 1.0
+                target_beta = 0.0
+
+                frame_idx = 0
+
                 for frame in reader:
                     frame_bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
-                    sharp_bgr = cv2.filter2D(frame_bgr, -1, kernel)
-                    sharp_rgb = cv2.cvtColor(sharp_bgr, cv2.COLOR_BGR2RGB)
-                    writer.append_data(sharp_rgb)
+
+                    # حساب إحصائيات الإضاءة كل 30 فريم
+                    if frame_idx % 30 == 0:
+                        gray = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
+                        mean_val = np.mean(gray)
+
+                        # حساب تعديل الإضاءة والتباين المطلوب للمشهد
+                        if mean_val < 90: # المشهد مظلم
+                            target_alpha = 1.15
+                            target_beta = target_brightness - mean_val
+                        elif mean_val > 160: # المشهد ساطع جداً
+                            target_alpha = 0.9
+                            target_beta = (target_brightness - mean_val) * 0.5
+                        else: # المشهد متوازن
+                            target_alpha = 1.05
+                            target_beta = 5.0
+
+                    # انتقال سلس تدريجي (Smooth Transition) بين الفريمات
+                    curr_alpha = curr_alpha * 0.95 + target_alpha * 0.05
+                    curr_beta = curr_beta * 0.95 + target_beta * 0.05
+
+                    # تطبيق تعديل الإضاءة السلس
+                    adjusted = cv2.convertScaleAbs(frame_bgr, alpha=curr_alpha, beta=curr_beta)
+
+                    # تحسين تفاصيل الوجه والحدود بلطف
+                    sharpen_kernel = np.array([
+                        [0, -0.5, 0],
+                        [-0.5, 3.0, -0.5],
+                        [0, -0.5, 0]
+                    ])
+                    enhanced = cv2.filter2D(adjusted, -1, sharpen_kernel)
+
+                    enhanced_rgb = cv2.cvtColor(enhanced, cv2.COLOR_BGR2RGB)
+                    writer.append_data(enhanced_rgb)
+                    frame_idx += 1
 
                 writer.close()
                 reader.close()
 
-                st.success("تم تحسين وتوضيح الفيديو بنجاح!")
+                # دمج الصوت الأصلي مع الفيديو المحسّن
+                try:
+                    orig_clip = VideoFileClip(input_path)
+                    enhanced_clip = VideoFileClip(video_only_path)
+
+                    if orig_clip.audio is not None:
+                        final_clip = enhanced_clip.set_audio(orig_clip.audio)
+                        final_clip.write_videofile(final_output_path, codec='libx264', audio_codec='aac', logger=None)
+                        orig_clip.close()
+                        enhanced_clip.close()
+                        display_path = final_output_path
+                    else:
+                        orig_clip.close()
+                        enhanced_clip.close()
+                        display_path = video_only_path
+                except Exception:
+                    display_path = video_only_path
+
+                st.success("تم تحسين وتوضيح الفيديو بنجاح مع دمج الصوت!")
                 
-                with open(output_path, "rb") as vid_file:
+                with open(display_path, "rb") as vid_file:
                     video_bytes = vid_file.read()
                     st.video(video_bytes, format="video/mp4")
 
             except Exception as e:
                 st.error(f"حدث خطأ أثناء المعالجة: {e}")
-

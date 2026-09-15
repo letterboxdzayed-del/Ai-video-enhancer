@@ -35,57 +35,46 @@ section[data-testid="stFileUploadDropzone"] div { color: #ffffff !important; }
 st.markdown("""
 <div class="header-box">
     <div class="main-title">Video Enhancer AI - Zayed</div>
-    <div class="sub-title">محرك رفع دقة الفيديوهات وزيادة التحديد والوضوح القوي (Ultra HD / 4K)</div>
+    <div class="sub-title">محرك زيادة التحديد والوضوح الفائق السريع</div>
     <div class="author-badge">تطوير: زايد العبادي | <span class="fatima-badge">فاطمة 🩷</span></div>
 </div>
 """, unsafe_allow_html=True)
 
 uploaded_vid = st.file_uploader("اختر فيديو للرفع (MP4, MOV, AVI, WEBM)", type=["mp4", "mov", "avi", "webm"], key="vid_up")
 
-def process_video_4k(input_path, output_path):
+def process_video_fast(input_path, output_path):
     cap = cv2.VideoCapture(input_path)
-    orig_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-    orig_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
     fps = cap.get(cv2.CAP_PROP_FPS) or 30
-
-    # مضاعفة الأبعاد بكسلات أعلى لإعطاء جودة عالية بدون تنعيم
-    new_width = orig_width * 2
-    new_height = orig_height * 2
 
     temp_no_audio = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4').name
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-    out = cv2.VideoWriter(temp_no_audio, fourcc, fps, (new_width, new_height))
+    out = cv2.VideoWriter(temp_no_audio, fourcc, fps, (width, height))
 
-    # مصفوفة زيادة التحديد والحدّة (Unsharp / Sharpening Matrix)
-    sharpen_kernel = np.array([
-        [0, -1, 0],
-        [-1, 5, -1],
-        [0, -1, 0]
-    ])
+    # مصفوفة حدة سريعة وخفيفة جداً تزيد وضوح الملامح بلمسة واحدة
+    kernel = np.array([[0, -1, 0], [-1, 5, -1], [0, -1, 0]])
 
     while cap.isOpened():
         ret, frame = cap.read()
         if not ret:
             break
-
-        # 1. تكبير الأبعاد باستخدام خوارزمية Lanczos4 الحادة
-        resized = cv2.resize(frame, (new_width, new_height), interpolation=cv2.INTER_LANCZOS4)
-
-        # 2. زيادة تحديد الملامح والحدود
-        sharp_frame = cv2.filter2D(resized, -1, sharpen_kernel)
-
-        out.write(sharp_frame)
+        
+        # تطبيق التوضيح المباشر
+        sharp = cv2.filter2D(frame, -1, kernel)
+        out.write(sharp)
 
     cap.release()
     out.release()
 
-    # دمج الصوت الأصلي وإعادة الترميز لـ H.264 للعرض في المتصفح
+    # تحويل وتقليص الترميز بسرعة فائقة وعرضه بثوانٍ
     try:
         cmd = [
             'ffmpeg', '-y',
             '-i', temp_no_audio,
             '-i', input_path,
             '-c:v', 'libx264',
+            '-preset', 'ultrafast',
             '-pix_fmt', 'yuv420p',
             '-c:a', 'aac',
             '-map', '0:v:0',
@@ -105,13 +94,14 @@ if uploaded_vid is not None:
     st.caption("الفيديو الأصلي:")
     st.video(input_vid_path)
 
-    if st.button("بدء معالجة الجودة الفائقة والتوضيح القوي", key="btn_vid"):
+    if st.button("بدء معالجة الجودة وتوضيح الملامح", key="btn_vid"):
         with st.spinner("جاري المعالجة... استغفر الله، الحمد لله، لا إله إلا الله، الله أكبر ✨"):
             try:
                 output_vid_path = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4').name
-                process_video_4k(input_vid_path, output_vid_path)
+                process_video_fast(input_vid_path, output_vid_path)
                 
                 st.success("تم تحسين وتوضيح الفيديو بنجاح!")
                 st.video(output_vid_path)
             except Exception as e:
                 st.error(f"حدث خطأ أثناء المعالجة: {e}")
+

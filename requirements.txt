@@ -1,2 +1,5 @@
 streamlit
-replicate
+gradio_client
+opencv-python-headless
+numpy
+

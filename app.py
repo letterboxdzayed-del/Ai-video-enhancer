@@ -2,7 +2,8 @@ import streamlit as st
 import cv2
 import numpy as np
 import imageio
-from moviepy.editor import VideoFileClip
+import imageio_ffmpeg as ffmpeg
+import subprocess
 import os
 
 st.set_page_config(
@@ -68,7 +69,7 @@ if uploaded_vid is not None:
                     pixelformat='yuv420p'
                 )
 
-                # متغيرات التحسين التكيفي السلس
+                # حساب وتعديل الإضاءة المتكيفة
                 target_brightness = 125.0
                 curr_alpha = 1.0
                 curr_beta = 0.0
@@ -80,34 +81,32 @@ if uploaded_vid is not None:
                 for frame in reader:
                     frame_bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
 
-                    # حساب إحصائيات الإضاءة كل 30 فريم
+                    # تقييم الإضاءة كل 30 فريم
                     if frame_idx % 30 == 0:
                         gray = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
                         mean_val = np.mean(gray)
 
-                        # حساب تعديل الإضاءة والتباين المطلوب للمشهد
-                        if mean_val < 90: # المشهد مظلم
-                            target_alpha = 1.15
-                            target_beta = target_brightness - mean_val
-                        elif mean_val > 160: # المشهد ساطع جداً
-                            target_alpha = 0.9
-                            target_beta = (target_brightness - mean_val) * 0.5
-                        else: # المشهد متوازن
-                            target_alpha = 1.05
-                            target_beta = 5.0
+                        if mean_val < 90:
+                            target_alpha = 1.12
+                            target_beta = (target_brightness - mean_val) * 0.6
+                        elif mean_val > 160:
+                            target_alpha = 0.92
+                            target_beta = (target_brightness - mean_val) * 0.4
+                        else:
+                            target_alpha = 1.04
+                            target_beta = 4.0
 
-                    # انتقال سلس تدريجي (Smooth Transition) بين الفريمات
-                    curr_alpha = curr_alpha * 0.95 + target_alpha * 0.05
-                    curr_beta = curr_beta * 0.95 + target_beta * 0.05
+                    # انتقال سلس لتجنب الفروقات المفاجئة
+                    curr_alpha = curr_alpha * 0.94 + target_alpha * 0.06
+                    curr_beta = curr_beta * 0.94 + target_beta * 0.06
 
-                    # تطبيق تعديل الإضاءة السلس
                     adjusted = cv2.convertScaleAbs(frame_bgr, alpha=curr_alpha, beta=curr_beta)
 
-                    # تحسين تفاصيل الوجه والحدود بلطف
+                    # تحسين حواف الوجه والتفاصيل بلطف
                     sharpen_kernel = np.array([
-                        [0, -0.5, 0],
-                        [-0.5, 3.0, -0.5],
-                        [0, -0.5, 0]
+                        [0, -0.4, 0],
+                        [-0.4, 2.6, -0.4],
+                        [0, -0.4, 0]
                     ])
                     enhanced = cv2.filter2D(adjusted, -1, sharpen_kernel)
 
@@ -118,25 +117,27 @@ if uploaded_vid is not None:
                 writer.close()
                 reader.close()
 
-                # دمج الصوت الأصلي مع الفيديو المحسّن
-                try:
-                    orig_clip = VideoFileClip(input_path)
-                    enhanced_clip = VideoFileClip(video_only_path)
-
-                    if orig_clip.audio is not None:
-                        final_clip = enhanced_clip.set_audio(orig_clip.audio)
-                        final_clip.write_videofile(final_output_path, codec='libx264', audio_codec='aac', logger=None)
-                        orig_clip.close()
-                        enhanced_clip.close()
-                        display_path = final_output_path
-                    else:
-                        orig_clip.close()
-                        enhanced_clip.close()
-                        display_path = video_only_path
-                except Exception:
+                # دمج الصوت الأصلي باستخدام مسار FFmpeg المدمج
+                ffmpeg_exe = ffmpeg.get_ffmpeg_exe()
+                cmd = [
+                    ffmpeg_exe, '-y',
+                    '-i', video_only_path,
+                    '-i', input_path,
+                    '-c:v', 'copy',
+                    '-c:a', 'aac',
+                    '-map', '0:v:0',
+                    '-map', '1:a:0?',
+                    final_output_path
+                ]
+                
+                result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                
+                if os.path.exists(final_output_path) and os.path.getsize(final_output_path) > 0:
+                    display_path = final_output_path
+                else:
                     display_path = video_only_path
 
-                st.success("تم تحسين وتوضيح الفيديو بنجاح مع دمج الصوت!")
+                st.success("تم تحسين وتوضيح الفيديو بنجاح مع حفظ الصوت الأصلي!")
                 
                 with open(display_path, "rb") as vid_file:
                     video_bytes = vid_file.read()

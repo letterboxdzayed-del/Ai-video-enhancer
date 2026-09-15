@@ -1,8 +1,7 @@
 import streamlit as st
 import cv2
 import numpy as np
-import tempfile
-import subprocess
+import imageio
 import os
 
 st.set_page_config(
@@ -10,7 +9,7 @@ st.set_page_config(
     layout="centered"
 )
 
-# تصميم الواجهة باللونين الأسود والذهبي مع لمسة وردية مخصصة لإهداء فاطمة
+# تصميم الواجهة الأسود والذهبي مع لمسة زهرية لإهداء فاطمة
 st.markdown("""
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -42,66 +41,48 @@ st.markdown("""
 
 uploaded_vid = st.file_uploader("اختر فيديو للرفع (MP4, MOV, AVI, WEBM)", type=["mp4", "mov", "avi", "webm"], key="vid_up")
 
-def process_video_fast(input_path, output_path):
-    cap = cv2.VideoCapture(input_path)
-    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-    fps = cap.get(cv2.CAP_PROP_FPS) or 30
-
-    temp_no_audio = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4').name
-    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-    out = cv2.VideoWriter(temp_no_audio, fourcc, fps, (width, height))
-
-    # مصفوفة حدة سريعة وخفيفة جداً تزيد وضوح الملامح بلمسة واحدة
-    kernel = np.array([[0, -1, 0], [-1, 5, -1], [0, -1, 0]])
-
-    while cap.isOpened():
-        ret, frame = cap.read()
-        if not ret:
-            break
-        
-        # تطبيق التوضيح المباشر
-        sharp = cv2.filter2D(frame, -1, kernel)
-        out.write(sharp)
-
-    cap.release()
-    out.release()
-
-    # تحويل وتقليص الترميز بسرعة فائقة وعرضه بثوانٍ
-    try:
-        cmd = [
-            'ffmpeg', '-y',
-            '-i', temp_no_audio,
-            '-i', input_path,
-            '-c:v', 'libx264',
-            '-preset', 'ultrafast',
-            '-pix_fmt', 'yuv420p',
-            '-c:a', 'aac',
-            '-map', '0:v:0',
-            '-map', '1:a:0?',
-            output_path
-        ]
-        subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
-    except Exception:
-        if os.path.exists(temp_no_audio):
-            os.replace(temp_no_audio, output_path)
-
 if uploaded_vid is not None:
-    with tempfile.NamedTemporaryFile(delete=False, suffix='.mp4') as tfile:
-        tfile.write(uploaded_vid.getbuffer())
-        input_vid_path = tfile.name
+    input_path = "temp_input.mp4"
+    output_path = "output_enhanced.mp4"
+
+    with open(input_path, "wb") as f:
+        f.write(uploaded_vid.getbuffer())
 
     st.caption("الفيديو الأصلي:")
-    st.video(input_vid_path)
+    st.video(input_path)
 
     if st.button("بدء معالجة الجودة وتوضيح الملامح", key="btn_vid"):
         with st.spinner("جاري المعالجة... استغفر الله، الحمد لله، لا إله إلا الله، الله أكبر ✨"):
             try:
-                output_vid_path = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4').name
-                process_video_fast(input_vid_path, output_vid_path)
-                
+                reader = imageio.get_reader(input_path)
+                meta = reader.get_meta_data()
+                fps = meta.get('fps', 30)
+
+                kernel = np.array([[0, -1, 0], [-1, 5, -1], [0, -1, 0]])
+
+                writer = imageio.get_writer(
+                    output_path,
+                    fps=fps,
+                    codec='libx264',
+                    quality=7,
+                    pixelformat='yuv420p'
+                )
+
+                for frame in reader:
+                    frame_bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+                    sharp_bgr = cv2.filter2D(frame_bgr, -1, kernel)
+                    sharp_rgb = cv2.cvtColor(sharp_bgr, cv2.COLOR_BGR2RGB)
+                    writer.append_data(sharp_rgb)
+
+                writer.close()
+                reader.close()
+
                 st.success("تم تحسين وتوضيح الفيديو بنجاح!")
-                st.video(output_vid_path)
+                
+                with open(output_path, "rb") as vid_file:
+                    video_bytes = vid_file.read()
+                    st.video(video_bytes, format="video/mp4")
+
             except Exception as e:
                 st.error(f"حدث خطأ أثناء المعالجة: {e}")
 

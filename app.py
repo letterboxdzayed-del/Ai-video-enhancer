@@ -36,7 +36,7 @@ section[data-testid="stFileUploadDropzone"] div { color: #ffffff !important; }
 st.markdown("""
 <div class="header-box">
     <div class="main-title">Video Enhancer AI - Zayed</div>
-    <div class="sub-title">محرك التحسين التكيفي الذكي للوجوه والإضاءة مع المحافظة على الصوت</div>
+    <div class="sub-title">محرك التوضيح والتحسين السلس غير الملاحظ (Ultra Seamless)</div>
     <div class="author-badge">تطوير: زايد العبادي | <span class="fatima-badge">فاطمة 🩷</span></div>
 </div>
 """, unsafe_allow_html=True)
@@ -54,12 +54,12 @@ if uploaded_vid is not None:
     st.caption("الفيديو الأصلي:")
     st.video(input_path)
 
-    if st.button("بدء المعالجة الذكية والمتكيفة", key="btn_vid"):
+    if st.button("بدء المعالجة الذكية والسلسة للغاية", key="btn_vid"):
         with st.spinner("جاري المعالجة... استغفر الله، الحمد لله، لا إله إلا الله، الله أكبر ✨"):
             try:
                 reader = imageio.get_reader(input_path)
                 meta = reader.get_meta_data()
-                fps = meta.get('fps', 30)
+                fps = int(meta.get('fps', 30))
 
                 writer = imageio.get_writer(
                     video_only_path,
@@ -69,44 +69,55 @@ if uploaded_vid is not None:
                     pixelformat='yuv420p'
                 )
 
-                # حساب وتعديل الإضاءة المتكيفة
+                # قيم التدرج المستهدف والفعلي
                 target_brightness = 125.0
                 curr_alpha = 1.0
                 curr_beta = 0.0
                 target_alpha = 1.0
                 target_beta = 0.0
+                
+                curr_sharp_factor = 2.2
+                target_sharp_factor = 2.2
 
                 frame_idx = 0
 
                 for frame in reader:
                     frame_bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
 
-                    # تقييم الإضاءة كل 30 فريم
-                    if frame_idx % 30 == 0:
+                    # 1. التقييم الذكي يتم كل ثانية واحدة (fps)
+                    if frame_idx % fps == 0:
                         gray = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
                         mean_val = np.mean(gray)
 
-                        if mean_val < 90:
-                            target_alpha = 1.12
-                            target_beta = (target_brightness - mean_val) * 0.6
-                        elif mean_val > 160:
-                            target_alpha = 0.92
-                            target_beta = (target_brightness - mean_val) * 0.4
-                        else:
-                            target_alpha = 1.04
-                            target_beta = 4.0
+                        if mean_val < 85: # مشهد مظلم
+                            target_alpha = 1.08
+                            target_beta = (target_brightness - mean_val) * 0.35
+                            target_sharp_factor = 2.4
+                        elif mean_val > 165: # مشهد ساطع
+                            target_alpha = 0.95
+                            target_beta = (target_brightness - mean_val) * 0.25
+                            target_sharp_factor = 2.0
+                        else: # مشهد متوازن
+                            target_alpha = 1.02
+                            target_beta = 2.0
+                            target_sharp_factor = 2.2
 
-                    # انتقال سلس لتجنب الفروقات المفاجئة
-                    curr_alpha = curr_alpha * 0.94 + target_alpha * 0.06
-                    curr_beta = curr_beta * 0.94 + target_beta * 0.06
+                    # 2. المزج السلس جداً (Smooth Fade Factor = 0.01)
+                    # يمنع أي قفزة مفاجئة تماماً ويوزع التعديل بمرونة فائقة بين الفريمات
+                    curr_alpha = curr_alpha * 0.99 + target_alpha * 0.01
+                    curr_beta = curr_beta * 0.99 + target_beta * 0.01
+                    curr_sharp_factor = curr_sharp_factor * 0.99 + target_sharp_factor * 0.01
 
+                    # 3. تطبيق الإضاءة
                     adjusted = cv2.convertScaleAbs(frame_bgr, alpha=curr_alpha, beta=curr_beta)
 
-                    # تحسين حواف الوجه والتفاصيل بلطف
+                    # 4. تطبيق الشاربن الديناميكي الناعم للوجه والتفاصيل
+                    s = curr_sharp_factor
+                    c = (s - 1.0) / 4.0
                     sharpen_kernel = np.array([
-                        [0, -0.4, 0],
-                        [-0.4, 2.6, -0.4],
-                        [0, -0.4, 0]
+                        [0, -c, 0],
+                        [-c, s, -c],
+                        [0, -c, 0]
                     ])
                     enhanced = cv2.filter2D(adjusted, -1, sharpen_kernel)
 
@@ -117,7 +128,7 @@ if uploaded_vid is not None:
                 writer.close()
                 reader.close()
 
-                # دمج الصوت الأصلي باستخدام مسار FFmpeg المدمج
+                # 5. دمج الصوت الأصلي
                 ffmpeg_exe = ffmpeg.get_ffmpeg_exe()
                 cmd = [
                     ffmpeg_exe, '-y',
@@ -130,18 +141,15 @@ if uploaded_vid is not None:
                     final_output_path
                 ]
                 
-                result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                 
-                if os.path.exists(final_output_path) and os.path.getsize(final_output_path) > 0:
-                    display_path = final_output_path
-                else:
-                    display_path = video_only_path
+                display_path = final_output_path if os.path.exists(final_output_path) and os.path.getsize(final_output_path) > 0 else video_only_path
 
-                st.success("تم تحسين وتوضيح الفيديو بنجاح مع حفظ الصوت الأصلي!")
+                st.success("تم تحسين وتوضيح الفيديو بنجاح ودمجه بسلاسة تامة!")
                 
                 with open(display_path, "rb") as vid_file:
-                    video_bytes = vid_file.read()
-                    st.video(video_bytes, format="video/mp4")
+                    st.video(vid_file.read(), format="video/mp4")
 
             except Exception as e:
                 st.error(f"حدث خطأ أثناء المعالجة: {e}")
+

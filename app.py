@@ -34,7 +34,7 @@ section[data-testid="stFileUploadDropzone"] div { color: #ffffff !important; }
 st.markdown("""
 <div class="header-box">
     <div class="main-title">Video Enhancer AI - Zayed</div>
-    <div class="sub-title">محرك توضيح الملامح واستعادة تفاصيل الفيديو الطبيعية</div>
+    <div class="sub-title">محرك التوضيح السريع والتكيفي المتوازن</div>
     <div class="author-badge">تطوير: زايد العبادي | <span class="fatima-badge">فاطمة 🩷</span></div>
 </div>
 """, unsafe_allow_html=True)
@@ -52,40 +52,38 @@ if uploaded_vid is not None:
     st.caption("الفيديو الأصلي:")
     st.video(input_path)
 
-    if st.button("بدء توضيح الملامح وتحسين التفاصيل", key="btn_vid"):
-        with st.spinner("جاري معالجة التفاصيل والإضاءة بشكل طبيعي... ✨"):
+    if st.button("بدء المعالجة السريعة والناعمة", key="btn_vid"):
+        with st.spinner("جاري التوضيح والضغط السريع... ✨"):
             try:
                 reader = imageio.get_reader(input_path)
                 meta = reader.get_meta_data()
                 fps = int(meta.get('fps', 30))
 
+                # كتابة الفيديو مع ضغط متوازن للحجم وسرعة عالية
                 writer = imageio.get_writer(
                     video_only_path,
                     fps=fps,
                     codec='libx264',
-                    quality=8,
+                    ffmpeg_params=['-crf', '24', '-preset', 'ultrafast'], # ضغط خفيف وحجم صغير جداً
                     pixelformat='yuv420p'
                 )
 
-                # محرك CLAHE لمعالجة الإضاءة والتباين الاحترافي
-                clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+                # CLAHE هادئ ولطيف جداً (1.2 بدل 2.0)
+                clahe = cv2.createCLAHE(clipLimit=1.2, tileGridSize=(8, 8))
 
                 for frame in reader:
                     frame_bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
 
-                    # 1. تحويل إلى نظام LAB لتعديل الإضاءة والتباين فقط دون التأثير على ألوان الوجه الطبيعية
+                    # تحسين إضاءة وتباين هادئ وطبيعي
                     lab = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2LAB)
                     l, a, b = cv2.split(lab)
-                    
-                    # تطبيق التباين التكيفي على القناة L
                     l_enhanced = clahe.apply(l)
-                    
                     lab_enhanced = cv2.merge((l_enhanced, a, b))
                     bgr_enhanced = cv2.cvtColor(lab_enhanced, cv2.COLOR_LAB2BGR)
 
-                    # 2. Unsharp Masking لتوضيح حواف العيون والشعر والملامح بدقة عالية
-                    gaussian = cv2.GaussianBlur(bgr_enhanced, (0, 0), 3)
-                    sharpened = cv2.addWeighted(bgr_enhanced, 1.5, gaussian, -0.5, 0)
+                    # حدة ناعمة وخفيفة متوازنة (1.2 بدل 1.5)
+                    gaussian = cv2.GaussianBlur(bgr_enhanced, (0, 0), 2)
+                    sharpened = cv2.addWeighted(bgr_enhanced, 1.2, gaussian, -0.2, 0)
 
                     enhanced_rgb = cv2.cvtColor(sharpened, cv2.COLOR_BGR2RGB)
                     writer.append_data(enhanced_rgb)
@@ -93,7 +91,7 @@ if uploaded_vid is not None:
                 writer.close()
                 reader.close()
 
-                # دمج الصوت الأصلي
+                # دمج الصوت مع ضغط تنزيل سريع جداً
                 ffmpeg_exe = ffmpeg.get_ffmpeg_exe()
                 cmd = [
                     ffmpeg_exe, '-y',
@@ -109,7 +107,7 @@ if uploaded_vid is not None:
                 subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                 display_path = final_output_path if os.path.exists(final_output_path) and os.path.getsize(final_output_path) > 0 else video_only_path
 
-                st.success("تم تحسين الفيديو وتوضيح الملامح بنجاح مع حفظ الصوت!")
+                st.success("تم التوضيح بنجاح! حجم الملف أصبح خفيفاً والتنزيل سيكون سريعاً جداً.")
                 
                 with open(display_path, "rb") as vid_file:
                     st.video(vid_file.read(), format="video/mp4")

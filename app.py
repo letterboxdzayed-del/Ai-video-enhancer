@@ -70,30 +70,16 @@ if uploaded_vid is not None:
                 clahe = cv2.createCLAHE(clipLimit=1.2, tileGridSize=(8, 8))
 
                 for frame in reader:
-                    # 1. ضبط الأبعاد لـ 1080p تلقائياً
-                    h, w, _ = frame.shape
-                    if h > 1080 or w > 1080:
-                        if h >= w: # فيديو طولي
-                            new_h = 1080
-                            new_w = int(w * (1080 / h))
-                        else: # فيديو بالعرض
-                            new_w = 1080
-                            new_h = int(h * (1080 / w))
-                        
-                        new_w = new_w if new_w % 2 == 0 else new_w - 1
-                        new_h = new_h if new_h % 2 == 0 else new_h - 1
-                        frame = cv2.resize(frame, (new_w, new_h), interpolation=cv2.INTER_AREA)
-
                     frame_bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
 
-                    # 2. تحسين الإضاءة والتباين الهادئ
+                    # تحسين الإضاءة والتباين الهادئ
                     lab = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2LAB)
                     l, a, b = cv2.split(lab)
                     l_enhanced = clahe.apply(l)
                     lab_enhanced = cv2.merge((l_enhanced, a, b))
                     bgr_enhanced = cv2.cvtColor(lab_enhanced, cv2.COLOR_LAB2BGR)
 
-                    # 3. توضيح الملامح الناعم
+                    # توضيح الملامح الناعم
                     gaussian = cv2.GaussianBlur(bgr_enhanced, (0, 0), 2)
                     sharpened = cv2.addWeighted(bgr_enhanced, 1.2, gaussian, -0.2, 0)
 
@@ -103,13 +89,16 @@ if uploaded_vid is not None:
                 writer.close()
                 reader.close()
 
-                # دمج الصوت أصلي
+                # إعادة الضغط القسري لـ 1080p مع دمج الصوت
                 ffmpeg_exe = ffmpeg.get_ffmpeg_exe()
                 cmd = [
                     ffmpeg_exe, '-y',
                     '-i', video_only_path,
                     '-i', input_path,
-                    '-c:v', 'copy',
+                    '-vf', "scale='if(gt(ih,iw),-2,1080)':'if(gt(ih,iw),1080,-2)'", # إجبار البعد الأكبر ليكون 1080p تماماً
+                    '-c:v', 'libx264',
+                    '-crf', '20',
+                    '-preset', 'fast',
                     '-c:a', 'aac',
                     '-map', '0:v:0',
                     '-map', '1:a:0?',
@@ -119,11 +108,10 @@ if uploaded_vid is not None:
                 subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                 display_path = final_output_path if os.path.exists(final_output_path) and os.path.getsize(final_output_path) > 0 else video_only_path
 
-                st.success("تم التعديل وضبط أبعاد الفيديو لـ 1080p HD بنجاح! جاهز للتيك توك مباشرة.")
+                st.success("تم التعديل وقفل أبعاد الفيديو على 1080p HD بنجاح!")
                 
                 with open(display_path, "rb") as vid_file:
                     st.video(vid_file.read(), format="video/mp4")
 
             except Exception as e:
                 st.error(f"حدث خطأ أثناء المعالجة: {e}")
-

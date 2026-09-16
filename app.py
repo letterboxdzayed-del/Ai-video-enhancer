@@ -34,12 +34,12 @@ section[data-testid="stFileUploadDropzone"] div { color: #ffffff !important; }
 st.markdown("""
 <div class="header-box">
     <div class="main-title">Video Enhancer AI - Zayed</div>
-    <div class="sub-title">محرك التوضيح التكيفي - معيار TikTok 1080p HD</div>
+    <div class="sub-title">محرك التوضيح التكيفي - معيار TikTok 1080p HD (حد 500MB)</div>
     <div class="author-badge">تطوير: زايد العبادي | <span class="fatima-badge">فاطمة 🩷</span></div>
 </div>
 """, unsafe_allow_html=True)
 
-uploaded_vid = st.file_uploader("اختر فيديو للرفع (MP4, MOV, AVI, WEBM)", type=["mp4", "mov", "avi", "webm"], key="vid_up")
+uploaded_vid = st.file_uploader("اختر فيديو للرفع (حتى 500 ميغابايت)", type=["mp4", "mov", "avi", "webm"], key="vid_up")
 
 if uploaded_vid is not None:
     input_path = "temp_input.mp4"
@@ -72,14 +72,14 @@ if uploaded_vid is not None:
                 for frame in reader:
                     frame_bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
 
-                    # تحسين الإضاءة والتباين الهادئ
+                    # تحسين الإضاءة والتباين
                     lab = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2LAB)
                     l, a, b = cv2.split(lab)
                     l_enhanced = clahe.apply(l)
                     lab_enhanced = cv2.merge((l_enhanced, a, b))
                     bgr_enhanced = cv2.cvtColor(lab_enhanced, cv2.COLOR_LAB2BGR)
 
-                    # توضيح الملامح الناعم
+                    # توضيح الملامح
                     gaussian = cv2.GaussianBlur(bgr_enhanced, (0, 0), 2)
                     sharpened = cv2.addWeighted(bgr_enhanced, 1.2, gaussian, -0.2, 0)
 
@@ -89,13 +89,13 @@ if uploaded_vid is not None:
                 writer.close()
                 reader.close()
 
-                # إعادة الضغط القسري لـ 1080p مع دمج الصوت
+                # تصدير قسري بـ 1080p
                 ffmpeg_exe = ffmpeg.get_ffmpeg_exe()
                 cmd = [
                     ffmpeg_exe, '-y',
                     '-i', video_only_path,
                     '-i', input_path,
-                    '-vf', "scale='if(gt(ih,iw),-2,1080)':'if(gt(ih,iw),1080,-2)'", # إجبار البعد الأكبر ليكون 1080p تماماً
+                    '-vf', "scale='if(gt(ih,iw),-2,1080)':'if(gt(ih,iw),1080,-2)'",
                     '-c:v', 'libx264',
                     '-crf', '20',
                     '-preset', 'fast',
@@ -115,3 +115,4 @@ if uploaded_vid is not None:
 
             except Exception as e:
                 st.error(f"حدث خطأ أثناء المعالجة: {e}")
+

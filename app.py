@@ -34,7 +34,7 @@ section[data-testid="stFileUploadDropzone"] div { color: #ffffff !important; }
 st.markdown("""
 <div class="header-box">
     <div class="main-title">Video Enhancer AI - Zayed</div>
-    <div class="sub-title">محرك التوضيح والتشبع الانتقائي الذكي (Smart Selective Color & Sharpness)</div>
+    <div class="sub-title">محرك التوضيح الذكي مع موازنة بشرة الوجوه وتعميم الانتقالات</div>
     <div class="author-badge">تطوير: زايد العبادي | <span class="fatima-badge">فاطمة 🩷</span></div>
 </div>
 """, unsafe_allow_html=True)
@@ -52,7 +52,7 @@ if uploaded_vid is not None:
     st.caption("الفيديو الأصلي:")
     st.video(input_path)
 
-    if st.button("بدء المعالجة الانتقائية الذكية", key="btn_vid"):
+    if st.button("بدء المعالجة والتعديل الاحترافي", key="btn_vid"):
         with st.spinner("جاري المعالجة... 🤍 (أستغفر الله العظيم - سبحان الله وبحمده - لا إله إلا الله) ✨"):
             try:
                 reader = imageio.get_reader(input_path)
@@ -67,39 +67,51 @@ if uploaded_vid is not None:
                     pixelformat='yuv420p'
                 )
 
+                prev_valid_frame = None
+
                 for frame in reader:
-                    # تحويل الألوان لنظام HSV لمعالجة القنوات بدقة
+                    # 1. إصلاح الرمشة الرمادية بين الانتقالات (Fix Gray Flash/Glitch)
+                    gray_test = cv2.cvtColor(frame, cv2.COLOR_RGB2GRAY)
+                    mean_val = np.mean(gray_test)
+                    std_val = np.std(gray_test)
+
+                    # إذا كان الفريم باهت/رمادي جداً ومفاجئ (Glitch Frame)
+                    if std_val < 8 and (30 < mean_val < 100) and prev_valid_frame is not None:
+                        frame = prev_valid_frame.copy()
+                    else:
+                        prev_valid_frame = frame.copy()
+
+                    # 2. تحويل HSV لمعالجة درجة ألوان البشرة secara خاص
                     hsv = cv2.cvtColor(frame, cv2.COLOR_RGB2HSV).astype(np.float32)
                     h, s, v = cv2.split(hsv)
 
-                    # 1. تشبع ألوان انتقائي (Selective Saturation)
-                    # إنشاء قناع يحدد المناطق الباهتة (Low Saturation) لزيادتها فقط بدون لمس الألوان القوية
-                    low_sat_mask = (s < 130).astype(np.float32)
-                    
-                    # زيادة التشبع للمناطق الباهتة فقط بنسبة 25%
-                    s = s + (low_sat_mask * s * 0.25)
+                    # تحديد نطاق درجات لون البشرة (Skin Tone Detection Mask)
+                    skin_mask = (h >= 0) & (h <= 25) & (s >= 30) & (s <= 180)
+                    skin_mask = skin_mask.astype(np.float32)
+                    skin_mask = cv2.GaussianBlur(skin_mask, (7, 7), 0)
+
+                    # تخفيض ذكي وتكيفي للتشبع على المناطق الخاصة بالبشرة فقط
+                    s_skin_reduced = s * 0.82  # تقليل نسبة التشبع الزائدة على الوجه
+                    s = s * (1.0 - skin_mask * 0.28) + s_skin_reduced * (skin_mask * 0.28)
                     s = np.clip(s, 0, 255)
 
-                    # 2. تعديل الإضاءة والتباين المحاط بنسق متوازن
-                    # استخدام CLAHE بنسبة خفيفة جداً لرفع تفاصيل الظلال دون حرق الإضاءة
+                    # 3. تحسين الإضاءة والتباين بشكل ناعم
                     v_uint8 = cv2.normalize(v, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
                     clahe = cv2.createCLAHE(clipLimit=1.1, tileGridSize=(8, 8))
                     v_enhanced = clahe.apply(v_uint8).astype(np.float32)
 
-                    # دمج القنوات المحدثة
+                    # إعادة تجميع القنوات
                     hsv_enhanced = cv2.merge([h, s, v_enhanced]).astype(np.uint8)
                     rgb_enhanced = cv2.cvtColor(hsv_enhanced, cv2.COLOR_HSV2RGB)
 
-                    # 3. توضيح انتقائي ذكي بناءً على الحواف (Edge-based Selective Sharpening)
+                    # 4. الشاربينغ (Sharpness) كما هو بدون تغيير بناءً على طلبك
                     gray = cv2.cvtColor(rgb_enhanced, cv2.COLOR_RGB2GRAY)
                     edges = cv2.Canny(gray, 50, 150).astype(np.float32) / 255.0
                     edges = cv2.GaussianBlur(edges, (3, 3), 0)
 
-                    # تطبيق الشاربينغ
                     gaussian = cv2.GaussianBlur(rgb_enhanced, (0, 0), 2.0)
                     sharpened_full = cv2.addWeighted(rgb_enhanced, 1.4, gaussian, -0.4, 0)
 
-                    # دمج الشاربينغ فقط في أجزاء الحواف والملامح (عشان الخلفية تظل ناعمة)
                     edges_3ch = cv2.merge([edges, edges, edges])
                     final_frame = (sharpened_full * edges_3ch + rgb_enhanced * (1.0 - edges_3ch)).astype(np.uint8)
 
@@ -128,11 +140,10 @@ if uploaded_vid is not None:
                 subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                 display_path = final_output_path if os.path.exists(final_output_path) and os.path.getsize(final_output_path) > 0 else video_only_path
 
-                st.success("تم التعديل والتوضيح الانتقائي بنجاح!")
+                st.success("تم ضبط تشبع الوجوه وإلغاء الرمشة بين الانتقالات بنجاح!")
                 
                 with open(display_path, "rb") as vid_file:
                     st.video(vid_file.read(), format="video/mp4")
 
             except Exception as e:
                 st.error(f"حدث خطأ أثناء المعالجة: {e}")
-

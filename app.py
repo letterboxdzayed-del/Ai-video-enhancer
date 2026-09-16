@@ -34,7 +34,7 @@ section[data-testid="stFileUploadDropzone"] div { color: #ffffff !important; }
 st.markdown("""
 <div class="header-box">
     <div class="main-title">Video Enhancer AI - Zayed</div>
-    <div class="sub-title">محرك التوضيح السريع والتكيفي المتوازن</div>
+    <div class="sub-title">محرك التوضيح التكيفي - معيار TikTok 1080p HD</div>
     <div class="author-badge">تطوير: زايد العبادي | <span class="fatima-badge">فاطمة 🩷</span></div>
 </div>
 """, unsafe_allow_html=True)
@@ -44,7 +44,7 @@ uploaded_vid = st.file_uploader("اختر فيديو للرفع (MP4, MOV, AVI, 
 if uploaded_vid is not None:
     input_path = "temp_input.mp4"
     video_only_path = "temp_no_audio.mp4"
-    final_output_path = "output_enhanced.mp4"
+    final_output_path = "output_enhanced_1080p.mp4"
 
     with open(input_path, "wb") as f:
         f.write(uploaded_vid.getbuffer())
@@ -52,36 +52,48 @@ if uploaded_vid is not None:
     st.caption("الفيديو الأصلي:")
     st.video(input_path)
 
-    if st.button("بدء المعالجة السريعة والناعمة", key="btn_vid"):
-        with st.spinner("جاري التوضيح والضغط السريع... ✨"):
+    if st.button("بدء المعالجة والضبط لـ 1080p", key="btn_vid"):
+        with st.spinner("جاري المعالجة... 🤍 (أستغفر الله العظيم - سبحان الله وبحمده - لا إله إلا الله) ✨"):
             try:
                 reader = imageio.get_reader(input_path)
                 meta = reader.get_meta_data()
                 fps = int(meta.get('fps', 30))
 
-                # كتابة الفيديو مع ضغط متوازن للحجم وسرعة عالية
                 writer = imageio.get_writer(
                     video_only_path,
                     fps=fps,
                     codec='libx264',
-                    ffmpeg_params=['-crf', '24', '-preset', 'ultrafast'], # ضغط خفيف وحجم صغير جداً
+                    ffmpeg_params=['-crf', '22', '-preset', 'ultrafast'],
                     pixelformat='yuv420p'
                 )
 
-                # CLAHE هادئ ولطيف جداً (1.2 بدل 2.0)
                 clahe = cv2.createCLAHE(clipLimit=1.2, tileGridSize=(8, 8))
 
                 for frame in reader:
+                    # 1. ضبط الأبعاد لـ 1080p تلقائياً
+                    h, w, _ = frame.shape
+                    if h > 1080 or w > 1080:
+                        if h >= w: # فيديو طولي
+                            new_h = 1080
+                            new_w = int(w * (1080 / h))
+                        else: # فيديو بالعرض
+                            new_w = 1080
+                            new_h = int(h * (1080 / w))
+                        
+                        new_w = new_w if new_w % 2 == 0 else new_w - 1
+                        new_h = new_h if new_h % 2 == 0 else new_h - 1
+                        frame = cv2.resize(frame, (new_w, new_h), interpolation=cv2.INTER_AREA)
+
                     frame_bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
 
-                    # تحسين إضاءة وتباين هادئ وطبيعي
+                    # 2. تحسين الإضاءة والتباين الهادئ
                     lab = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2LAB)
                     l, a, b = cv2.split(lab)
                     l_enhanced = clahe.apply(l)
                     lab_enhanced = cv2.merge((l_enhanced, a, b))
                     bgr_enhanced = cv2.cvtColor(lab_enhanced, cv2.COLOR_LAB2BGR)
 
-                    # حدة ناعمة وخفيفة متوازنة (1.2 بدل 1.5)
+                    # 3. توضيح الملامح الناعم
                     gaussian = cv2.GaussianBlur(bgr_enhanced, (0, 0), 2)
                     sharpened = cv2.addWeighted(bgr_enhanced, 1.2, gaussian, -0.2, 0)
 
@@ -91,7 +103,7 @@ if uploaded_vid is not None:
                 writer.close()
                 reader.close()
 
-                # دمج الصوت مع ضغط تنزيل سريع جداً
+                # دمج الصوت أصلي
                 ffmpeg_exe = ffmpeg.get_ffmpeg_exe()
                 cmd = [
                     ffmpeg_exe, '-y',
@@ -107,10 +119,11 @@ if uploaded_vid is not None:
                 subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                 display_path = final_output_path if os.path.exists(final_output_path) and os.path.getsize(final_output_path) > 0 else video_only_path
 
-                st.success("تم التوضيح بنجاح! حجم الملف أصبح خفيفاً والتنزيل سيكون سريعاً جداً.")
+                st.success("تم التعديل وضبط أبعاد الفيديو لـ 1080p HD بنجاح! جاهز للتيك توك مباشرة.")
                 
                 with open(display_path, "rb") as vid_file:
                     st.video(vid_file.read(), format="video/mp4")
 
             except Exception as e:
                 st.error(f"حدث خطأ أثناء المعالجة: {e}")
+

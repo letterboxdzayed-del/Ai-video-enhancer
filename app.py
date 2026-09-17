@@ -5,7 +5,6 @@ import imageio
 import imageio_ffmpeg as ffmpeg
 import subprocess
 import os
-from concurrent.futures import ThreadPoolExecutor
 
 st.set_page_config(
     page_title="Video Enhancer AI - Zayed",
@@ -35,44 +34,10 @@ section[data-testid="stFileUploadDropzone"] div { color: #ffffff !important; }
 st.markdown("""
 <div class="header-box">
     <div class="main-title">Video Enhancer AI - Zayed</div>
-    <div class="sub-title">محرك التوضيح الذكي السريع مع موازنة ألوان البشرة الاحترافية</div>
+    <div class="sub-title">محرك التوضيح الذكي المباشر مع حماية الذاكرة وخفض استهلاك RAM</div>
     <div class="author-badge">تطوير: زايد العبادي | <span class="fatima-badge">فاطمة 🩷</span></div>
 </div>
 """, unsafe_allow_html=True)
-
-def process_frame(frame):
-    # 1. تحويل سريع لقنوات HSV باستخدام NumPy Vectorization
-    hsv = cv2.cvtColor(frame, cv2.COLOR_RGB2HSV)
-    h, s, v = hsv[:, :, 0], hsv[:, :, 1].astype(np.float32), hsv[:, :, 2].astype(np.float32)
-
-    # 2. قناع تحديد ألوان البشرة (Skin Detection Vectorized Mask)
-    skin_mask = (h >= 0) & (h <= 25) & (s >= 30) & (s <= 180)
-    skin_mask_float = skin_mask.astype(np.float32)
-
-    # 3. تخفيض التشبع على ألوان الوجه فقط بنسبة محددة لمنع الصفار والأحمر الزائد
-    s = s * (1.0 - skin_mask_float * 0.25)
-    s = np.clip(s, 0, 255).astype(np.uint8)
-
-    # 4. تحسين تباين وإضاءة الظلال عبر CLAHE
-    clahe = cv2.createCLAHE(clipLimit=1.1, tileGridSize=(8, 8))
-    v_enhanced = clahe.apply(v.astype(np.uint8))
-
-    # دمج القنوات وإعادتها لـ RGB
-    hsv_enhanced = cv2.merge([hsv[:, :, 0], s, v_enhanced])
-    rgb_enhanced = cv2.cvtColor(hsv_enhanced, cv2.COLOR_HSV2RGB)
-
-    # 5. الشاربينغ الذكي المرتكز على الحواف والملامح (Selective Edge Sharpening)
-    gray = cv2.cvtColor(rgb_enhanced, cv2.COLOR_RGB2GRAY)
-    edges = cv2.Canny(gray, 50, 150).astype(np.float32) / 255.0
-    edges_blur = cv2.GaussianBlur(edges, (3, 3), 0)
-
-    gaussian = cv2.GaussianBlur(rgb_enhanced, (0, 0), 2.0)
-    sharpened_full = cv2.addWeighted(rgb_enhanced, 1.4, gaussian, -0.4, 0)
-
-    edges_3ch = cv2.merge([edges_blur, edges_blur, edges_blur])
-    final_frame = (sharpened_full * edges_3ch + rgb_enhanced * (1.0 - edges_3ch)).astype(np.uint8)
-
-    return final_frame
 
 uploaded_vid = st.file_uploader("اختر فيديو للرفع (حتى 500 ميغابايت)", type=["mp4", "mov", "avi", "webm"], key="vid_up")
 
@@ -81,42 +46,75 @@ if uploaded_vid is not None:
     video_only_path = "temp_no_audio.mp4"
     final_output_path = "output_enhanced_1080p.mp4"
 
+    # تنظيف الملفات القديمة لمنع التداخل أو استهلاك المساحة
+    for temp_f in [input_path, video_only_path, final_output_path]:
+        if os.path.exists(temp_f):
+            try:
+                os.remove(temp_f)
+            except:
+                pass
+
     with open(input_path, "wb") as f:
         f.write(uploaded_vid.getbuffer())
 
     st.caption("الفيديو الأصلي:")
     st.video(input_path)
 
-    if st.button("بدء المعالجة الذكية السريعة ⚡", key="btn_vid"):
-        with st.spinner("جاري المعالجة الموازية... 🤍 (أستغفر الله العظيم - سبحان الله وبحمده - لا إله إلا الله) ✨"):
+    if st.button("بدء المعالجة الذكية والآمنة ⚡", key="btn_vid"):
+        with st.spinner("جاري المعالجة... 🤍 (أستغفر الله العظيم - سبحان الله وبحمده - لا إله إلا الله) ✨"):
             try:
                 reader = imageio.get_reader(input_path)
                 meta = reader.get_meta_data()
                 fps = int(meta.get('fps', 30))
 
-                # قراءة الفريمات بالكامل في الذاكرة لتطبيق الـ Parallel Processing
-                frames = [f for f in reader]
-                reader.close()
-
-                # معالجة الفريمات باستخدام تعدد الأنوية (Parallel Execution)
-                with ThreadPoolExecutor(max_workers=os.cpu_count() or 4) as executor:
-                    processed_frames = list(executor.map(process_frame, frames))
-
-                # كتابة الفريمات المعدلة
                 writer = imageio.get_writer(
                     video_only_path,
                     fps=fps,
                     codec='libx264',
-                    ffmpeg_params=['-crf', '18', '-preset', 'fast'],
+                    ffmpeg_params=['-crf', '18', '-preset', 'ultrafast'],
                     pixelformat='yuv420p'
                 )
 
-                for pf in processed_frames:
-                    writer.append_data(pf)
+                clahe = cv2.createCLAHE(clipLimit=1.1, tileGridSize=(8, 8))
+
+                # معالجة بالتدفق الفردي لحماية RAM السيرفر من الكراش
+                for frame in reader:
+                    # 1. تحويل سريع لقنوات HSV
+                    hsv = cv2.cvtColor(frame, cv2.COLOR_RGB2HSV)
+                    h, s, v = hsv[:, :, 0], hsv[:, :, 1].astype(np.float32), hsv[:, :, 2]
+
+                    # 2. قناع تحديد ألوان البشرة (Skin Mask)
+                    skin_mask = (h >= 0) & (h <= 25) & (s >= 30) & (s <= 180)
+                    skin_mask_float = skin_mask.astype(np.float32)
+
+                    # 3. تخفيض التشبع على الوجوه فقط لحمايتها من الأحمريّة والصفار
+                    s = s * (1.0 - skin_mask_float * 0.25)
+                    s = np.clip(s, 0, 255).astype(np.uint8)
+
+                    # 4. تحسين الإضاءة بشكل ناعم
+                    v_enhanced = clahe.apply(v)
+
+                    # دمج القنوات وإعادتها لـ RGB
+                    hsv_enhanced = cv2.merge([h, s, v_enhanced])
+                    rgb_enhanced = cv2.cvtColor(hsv_enhanced, cv2.COLOR_HSV2RGB)
+
+                    # 5. الشاربينغ الذكي المباشر
+                    gray = cv2.cvtColor(rgb_enhanced, cv2.COLOR_RGB2GRAY)
+                    edges = cv2.Canny(gray, 50, 150).astype(np.float32) / 255.0
+                    edges_blur = cv2.GaussianBlur(edges, (3, 3), 0)
+
+                    gaussian = cv2.GaussianBlur(rgb_enhanced, (0, 0), 2.0)
+                    sharpened_full = cv2.addWeighted(rgb_enhanced, 1.4, gaussian, -0.4, 0)
+
+                    edges_3ch = cv2.merge([edges_blur, edges_blur, edges_blur])
+                    final_frame = (sharpened_full * edges_3ch + rgb_enhanced * (1.0 - edges_3ch)).astype(np.uint8)
+
+                    writer.append_data(final_frame)
 
                 writer.close()
+                reader.close()
 
-                # تصدير مع الصوت بوضوح 1080p
+                # دمج الصوت والتصدير بدقة 1080p
                 ffmpeg_exe = ffmpeg.get_ffmpeg_exe()
                 cmd = [
                     ffmpeg_exe, '-y',
@@ -125,7 +123,7 @@ if uploaded_vid is not None:
                     '-vf', "scale='if(gt(ih,iw),-2,1080)':'if(gt(ih,iw),1080,-2)'",
                     '-c:v', 'libx264',
                     '-crf', '18',
-                    '-preset', 'fast',
+                    '-preset', 'ultrafast',
                     '-pix_fmt', 'yuv420p',
                     '-c:a', 'aac',
                     '-map', '0:v:0',
@@ -136,7 +134,7 @@ if uploaded_vid is not None:
                 subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                 display_path = final_output_path if os.path.exists(final_output_path) and os.path.getsize(final_output_path) > 0 else video_only_path
 
-                st.success("تمت المعالجة بنجاح وبسرعة عالية بدون أي نقص بالجودة!")
+                st.success("تمت المعالجة بنجاح وبدون أي استهلاك زائد للذاكرة!")
                 
                 with open(display_path, "rb") as vid_file:
                     st.video(vid_file.read(), format="video/mp4")

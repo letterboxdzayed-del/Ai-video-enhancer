@@ -34,7 +34,7 @@ section[data-testid="stFileUploadDropzone"] div { color: #ffffff !important; }
 st.markdown("""
 <div class="header-box">
     <div class="main-title">Video Enhancer AI - Zayed</div>
-    <div class="sub-title">محرك المعالجة التكيفية الذكية على مستوى البيكسل (Pixel-Level AI)</div>
+    <div class="sub-title">محرك التوضيح الذكي المنقّى من التشويش ونويز الخلفيات</div>
     <div class="author-badge">تطوير: زايد العبادي | <span class="fatima-badge">فاطمة 🩷</span></div>
 </div>
 """, unsafe_allow_html=True)
@@ -59,8 +59,8 @@ if uploaded_vid is not None:
     st.caption("الفيديو الأصلي:")
     st.video(input_path)
 
-    if st.button("بدء المعالجة الذكية السريعة ⚡", key="btn_vid"):
-        with st.spinner("جاري فحص وتعديل البيكسلات فائقة السرعة... 🤍 (أستغفر الله العظيم - سبحان الله وبحمده - لا إله إلا الله) ✨"):
+    if st.button("بدء المعالجة السينمائية ⚡", key="btn_vid"):
+        with st.spinner("جاري تنظيف النويز وتوضيح تفاصيل الشخصية... 🤍 (أستغفر الله العظيم - سبحان الله وبحمده - لا إله إلا الله) ✨"):
             try:
                 reader = imageio.get_reader(input_path)
                 meta = reader.get_meta_data()
@@ -74,48 +74,24 @@ if uploaded_vid is not None:
                     pixelformat='yuv420p'
                 )
 
-                # إعداد خوارزمية التباين الموضعي السريع
-                clahe = cv2.createCLAHE(clipLimit=1.2, tileGridSize=(8, 8))
-
                 for frame in reader:
-                    # ----------------------------------------------------
-                    # 1. فحص وتعديل التشبع التكيفي لكل بيكسل (Pixel Saturation Check)
-                    # ----------------------------------------------------
-                    hsv = cv2.cvtColor(frame, cv2.COLOR_RGB2HSV).astype(np.float32)
-                    h, s, v = hsv[:, :, 0], hsv[:, :, 1], hsv[:, :, 2]
+                    # 1. إزالة التشويش والنويز من الخلفية والملابس مع الحفاظ على حواف الشخصية
+                    denoised = cv2.bilateralFilter(frame, d=5, sigmaColor=35, sigmaSpace=35)
 
-                    # مصفوفة تكيفية: البيكسل الباهت (S خفيفة) يأخذ زيادة، والبيكسل المشبع (S عالية) لا يزاد
-                    sat_weight = np.clip((120.0 - s) / 120.0, 0.0, 1.0)
-                    s_adaptive = s + (sat_weight * 18.0)
-                    s_final = np.clip(s_adaptive, 0, 255).astype(np.uint8)
-
-                    hsv_adapted = cv2.merge([h.astype(np.uint8), s_final, v.astype(np.uint8)])
-                    rgb_sat = cv2.cvtColor(hsv_adapted, cv2.COLOR_HSV2RGB)
-
-                    # ----------------------------------------------------
-                    # 2. فحص وتعديل التباين والإضاءة لكل منطقة (Local Luminance)
-                    # ----------------------------------------------------
-                    lab = cv2.cvtColor(rgb_sat, cv2.COLOR_RGB2LAB)
-                    l, a, b = cv2.split(lab)
-                    l_enhanced = clahe.apply(l)
-                    lab_enhanced = cv2.merge([l_enhanced, a, b])
-                    rgb_contrast = cv2.cvtColor(lab_enhanced, cv2.COLOR_LAB2RGB)
-
-                    # ----------------------------------------------------
-                    # 3. فحص وتعديل الحدة والشاربينغ للبيكسلات المحددة فقط (Pixel Edge Sharpening)
-                    # ----------------------------------------------------
-                    gray = cv2.cvtColor(rgb_contrast, cv2.COLOR_RGB2GRAY)
+                    # 2. تحويل الصورة الـ Denoised للرمادي لكشف الحواف الحقيقية فقط
+                    gray = cv2.cvtColor(denoised, cv2.COLOR_RGB2GRAY)
                     
-                    # قناع الحواف الدقيق لتمييز البيكسلات الحادة عن الملساء
-                    edges = cv2.Canny(gray, 30, 120).astype(np.float32) / 255.0
+                    # رفع عتبة Canny ليتجاهل تفاصيل الخلفية والملابس الناعمة
+                    edges = cv2.Canny(gray, 70, 170).astype(np.float32) / 255.0
                     edges_blur = cv2.GaussianBlur(edges, (3, 3), 0)
 
-                    gaussian = cv2.GaussianBlur(rgb_contrast, (0, 0), 2.0)
-                    sharpened_full = cv2.addWeighted(rgb_contrast, 1.35, gaussian, -0.35, 0)
+                    # 3. شاربينغ متوازن على الصورة النظيفة
+                    gaussian = cv2.GaussianBlur(denoised, (0, 0), 1.5)
+                    sharpened_full = cv2.addWeighted(denoised, 1.20, gaussian, -0.20, 0)
 
-                    # دمج الشاربينغ فقط على البيكسلات التي تمثل تفاصيل (edges)
+                    # 4. تطبيق التوضيح حصراً على حواف الشخصية والرسمات الرئيسية
                     edges_3ch = cv2.merge([edges_blur, edges_blur, edges_blur])
-                    final_frame = (sharpened_full * edges_3ch + rgb_contrast * (1.0 - edges_3ch)).astype(np.uint8)
+                    final_frame = (sharpened_full * edges_3ch + frame * (1.0 - edges_3ch)).astype(np.uint8)
 
                     writer.append_data(final_frame)
 
@@ -141,7 +117,7 @@ if uploaded_vid is not None:
                 subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                 display_path = final_output_path if os.path.exists(final_output_path) and os.path.getsize(final_output_path) > 0 else video_only_path
 
-                st.success("تمت المعالجة بنجاح وبسرعة فائقة مع تعديل تكيفي لكل بيكسل!")
+                st.success("تمت المعالجة بنجاح بنقاء كامل وبدون تشويش بالخلفية!")
                 
                 with open(display_path, "rb") as vid_file:
                     st.video(vid_file.read(), format="video/mp4")

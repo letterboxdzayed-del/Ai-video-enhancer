@@ -34,7 +34,7 @@ section[data-testid="stFileUploadDropzone"] div { color: #ffffff !important; }
 st.markdown("""
 <div class="header-box">
     <div class="main-title">Video Enhancer AI - Zayed</div>
-    <div class="sub-title">محرك التوضيح الذكي السينمائي مع عزل البشرة والشاربينغ الدقيق</div>
+    <div class="sub-title">محرك التوضيح الذكي بالألوان السينمائية المتوازنة</div>
     <div class="author-badge">تطوير: زايد العبادي | <span class="fatima-badge">فاطمة 🩷</span></div>
 </div>
 """, unsafe_allow_html=True)
@@ -60,7 +60,7 @@ if uploaded_vid is not None:
     st.video(input_path)
 
     if st.button("بدء المعالجة السينمائية ⚡", key="btn_vid"):
-        with st.spinner("جاري التوضيح وحماية ألوان البشرة... 🤍 (أستغفر الله العظيم - سبحان الله وبحمده - لا إله إلا الله) ✨"):
+        with st.spinner("جاري التوضيح وموازنة الألوان... 🤍 (أستغفر الله العظيم - سبحان الله وبحمده - لا إله إلا الله) ✨"):
             try:
                 reader = imageio.get_reader(input_path)
                 meta = reader.get_meta_data()
@@ -74,38 +74,34 @@ if uploaded_vid is not None:
                     pixelformat='yuv420p'
                 )
 
-                clahe = cv2.createCLAHE(clipLimit=1.0, tileGridSize=(8, 8))
+                clahe = cv2.createCLAHE(clipLimit=1.2, tileGridSize=(8, 8))
 
                 for frame in reader:
-                    # 1. تحويل لـ HSV
-                    hsv = cv2.cvtColor(frame, cv2.COLOR_RGB2HSV).astype(np.float32)
-                    h, s, v = hsv[:, :, 0], hsv[:, :, 1], hsv[:, :, 2]
+                    # 1. تحويل لـ LAB لمنع باهتانية الألوان
+                    lab = cv2.cvtColor(frame, cv2.COLOR_RGB2LAB)
+                    l, a, b = cv2.split(lab)
 
-                    # 2. قناع ذكي لتحديد ألوان البشرة (Skin Mask)
-                    skin_mask = (h >= 0) & (h <= 20) & (s >= 25) & (s <= 180)
-                    skin_mask_float = cv2.GaussianBlur(skin_mask.astype(np.float32), (9, 9), 0)
+                    # 2. تحسين الإضاءة والتباين على قناة L فقط
+                    l_enhanced = clahe.apply(l)
 
-                    # 3. تخفيض التشبع على البشرة لحل مشكلة الصفار والأحمر الزائد
-                    s_skin_corrected = s * (1.0 - skin_mask_float * 0.35)
-                    s_final = np.clip(s_skin_corrected, 0, 255).astype(np.uint8)
+                    lab_enhanced = cv2.merge([l_enhanced, a, b])
+                    rgb_balanced = cv2.cvtColor(lab_enhanced, cv2.COLOR_LAB2RGB)
 
-                    # 4. موازنة الإضاءة على الوجه بتخفيف التباين القاسي
-                    v_uint8 = cv2.normalize(v, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
-                    v_enhanced = clahe.apply(v_uint8)
+                    # 3. إعطاء رشة تشبع خفيفة جداً (10%) لاسترجاع حيوية الألوان
+                    hsv = cv2.cvtColor(rgb_balanced, cv2.COLOR_RGB2HSV).astype(np.float32)
+                    hsv[:, :, 1] = np.clip(hsv[:, :, 1] * 1.10, 0, 255)
+                    rgb_vibrant = cv2.cvtColor(hsv.astype(np.uint8), cv2.COLOR_HSV2RGB)
 
-                    hsv_enhanced = cv2.merge([h.astype(np.uint8), s_final, v_enhanced])
-                    rgb_enhanced = cv2.cvtColor(hsv_enhanced, cv2.COLOR_HSV2RGB)
-
-                    # 5. الشاربينغ الاحترافي المباشر
-                    gray = cv2.cvtColor(rgb_enhanced, cv2.COLOR_RGB2GRAY)
+                    # 4. الشاربينغ الحاد المباشر
+                    gray = cv2.cvtColor(rgb_vibrant, cv2.COLOR_RGB2GRAY)
                     edges = cv2.Canny(gray, 40, 140).astype(np.float32) / 255.0
                     edges_blur = cv2.GaussianBlur(edges, (3, 3), 0)
 
-                    gaussian = cv2.GaussianBlur(rgb_enhanced, (0, 0), 2.0)
-                    sharpened_full = cv2.addWeighted(rgb_enhanced, 1.35, gaussian, -0.35, 0)
+                    gaussian = cv2.GaussianBlur(rgb_vibrant, (0, 0), 2.0)
+                    sharpened_full = cv2.addWeighted(rgb_vibrant, 1.35, gaussian, -0.35, 0)
 
                     edges_3ch = cv2.merge([edges_blur, edges_blur, edges_blur])
-                    final_frame = (sharpened_full * edges_3ch + rgb_enhanced * (1.0 - edges_3ch)).astype(np.uint8)
+                    final_frame = (sharpened_full * edges_3ch + rgb_vibrant * (1.0 - edges_3ch)).astype(np.uint8)
 
                     writer.append_data(final_frame)
 
@@ -131,7 +127,7 @@ if uploaded_vid is not None:
                 subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                 display_path = final_output_path if os.path.exists(final_output_path) and os.path.getsize(final_output_path) > 0 else video_only_path
 
-                st.success("تمت المعالجة بنجاح وبأفضل نتيجة متوازنة!")
+                st.success("تمت المعالجة بنجاح وبألوان حية وتفاصيل حادة!")
                 
                 with open(display_path, "rb") as vid_file:
                     st.video(vid_file.read(), format="video/mp4")

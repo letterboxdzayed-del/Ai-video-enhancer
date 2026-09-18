@@ -34,7 +34,7 @@ section[data-testid="stFileUploadDropzone"] div { color: #ffffff !important; }
 st.markdown("""
 <div class="header-box">
     <div class="main-title">Video Enhancer AI - Zayed</div>
-    <div class="sub-title">محرك التوضيح الذكي المنقّى من التشويش ونويز الخلفيات</div>
+    <div class="sub-title">محرك المعالجة التكيفية فائقة السرعة مع استثناء المناطق الغامقة من الشاربينغ</div>
     <div class="author-badge">تطوير: زايد العبادي | <span class="fatima-badge">فاطمة 🩷</span></div>
 </div>
 """, unsafe_allow_html=True)
@@ -59,8 +59,8 @@ if uploaded_vid is not None:
     st.caption("الفيديو الأصلي:")
     st.video(input_path)
 
-    if st.button("بدء المعالجة السينمائية ⚡", key="btn_vid"):
-        with st.spinner("جاري تنظيف النويز وتوضيح تفاصيل الشخصية... 🤍 (أستغفر الله العظيم - سبحان الله وبحمده - لا إله إلا الله) ✨"):
+    if st.button("بدء المعالجة الذكية السريعة ⚡", key="btn_vid"):
+        with st.spinner("جاري التعديل السريع والتكيفي بدون تشويش للأسود... 🤍 (أستغفر الله العظيم - سبحان الله وبحمده - لا إله إلا الله) ✨"):
             try:
                 reader = imageio.get_reader(input_path)
                 meta = reader.get_meta_data()
@@ -74,24 +74,65 @@ if uploaded_vid is not None:
                     pixelformat='yuv420p'
                 )
 
-                for frame in reader:
-                    # 1. إزالة التشويش والنويز من الخلفية والملابس مع الحفاظ على حواف الشخصية
-                    denoised = cv2.bilateralFilter(frame, d=5, sigmaColor=35, sigmaSpace=35)
+                clahe = cv2.createCLAHE(clipLimit=1.2, tileGridSize=(8, 8))
+                
+                # متغيرات التنعيم الزمني لمنع الانتقال المفاجئ بين الفريمات
+                smooth_sat_factor = 1.0
+                smooth_val_factor = 1.0
 
-                    # 2. تحويل الصورة الـ Denoised للرمادي لكشف الحواف الحقيقية فقط
-                    gray = cv2.cvtColor(denoised, cv2.COLOR_RGB2GRAY)
-                    
-                    # رفع عتبة Canny ليتجاهل تفاصيل الخلفية والملابس الناعمة
-                    edges = cv2.Canny(gray, 70, 170).astype(np.float32) / 255.0
+                for frame in reader:
+                    # 1. التحويل إلى HSV لمعالجة التشبع والإضاءة بكل نقطة
+                    hsv = cv2.cvtColor(frame, cv2.COLOR_RGB2HSV).astype(np.float32)
+                    h, s, v = hsv[:, :, 0], hsv[:, :, 1], hsv[:, :, 2]
+
+                    # حساب معدلات الفريم لمنع التغير المفاجئ
+                    mean_s = np.mean(s)
+                    mean_v = np.mean(v)
+
+                    target_sat = 1.12 if mean_s < 80 else (1.05 if mean_s < 120 else 1.0)
+                    target_val = 1.05 if mean_v < 100 else 1.0
+
+                    # التنعيم بين الفريمات (Smooth Transition)
+                    smooth_sat_factor = 0.85 * smooth_sat_factor + 0.15 * target_sat
+                    smooth_val_factor = 0.85 * smooth_val_factor + 0.15 * target_val
+
+                    # تعديل التشبع والسطوع التكيفي لكل نقطة
+                    s_boosted = s * smooth_sat_factor
+                    v_boosted = v * smooth_val_factor
+
+                    s_final = np.clip(s_boosted, 0, 255).astype(np.uint8)
+                    v_final = np.clip(v_boosted, 0, 255).astype(np.uint8)
+
+                    hsv_adapted = cv2.merge([h.astype(np.uint8), s_final, v_final])
+                    rgb_adapted = cv2.cvtColor(hsv_adapted, cv2.COLOR_HSV2RGB)
+
+                    # 2. موازنة التباين الموضعي (Contrast)
+                    lab = cv2.cvtColor(rgb_adapted, cv2.COLOR_RGB2LAB)
+                    l, a, b = cv2.split(lab)
+                    l_enhanced = clahe.apply(l)
+                    lab_enhanced = cv2.merge([l_enhanced, a, b])
+                    rgb_contrast = cv2.cvtColor(lab_enhanced, cv2.COLOR_LAB2RGB)
+
+                    # 3. الشاربينغ الذكي واستثناء المناطق الغامقة والأسود
+                    gray = cv2.cvtColor(rgb_contrast, cv2.COLOR_RGB2GRAY)
+
+                    # قناع استثناء الأسود والألوان الغامقة (المناطق الداكنة < 45 لا يمسها الشاربينغ)
+                    brightness_mask = cv2.threshold(gray, 45, 255, cv2.THRESH_BINARY)[1].astype(np.float32) / 255.0
+                    brightness_mask = cv2.GaussianBlur(brightness_mask, (5, 5), 0)
+
+                    # حواف Canny حادة وقوية للتفاصيل الواضحة فقط
+                    edges = cv2.Canny(gray, 60, 150).astype(np.float32) / 255.0
                     edges_blur = cv2.GaussianBlur(edges, (3, 3), 0)
 
-                    # 3. شاربينغ متوازن على الصورة النظيفة
-                    gaussian = cv2.GaussianBlur(denoised, (0, 0), 1.5)
-                    sharpened_full = cv2.addWeighted(denoised, 1.20, gaussian, -0.20, 0)
+                    # حساب الشاربينغ الممتاز (1.4)
+                    gaussian = cv2.GaussianBlur(rgb_contrast, (0, 0), 1.8)
+                    sharpened_full = cv2.addWeighted(rgb_contrast, 1.40, gaussian, -0.40, 0)
 
-                    # 4. تطبيق التوضيح حصراً على حواف الشخصية والرسمات الرئيسية
-                    edges_3ch = cv2.merge([edges_blur, edges_blur, edges_blur])
-                    final_frame = (sharpened_full * edges_3ch + frame * (1.0 - edges_3ch)).astype(np.uint8)
+                    # دمج الأقنعة: حواف الشاربينغ مضروبة في قناع الإضاءة (تجاهل الغامق تماماً)
+                    final_mask = edges_blur * brightness_mask
+                    final_mask_3ch = cv2.merge([final_mask, final_mask, final_mask])
+
+                    final_frame = (sharpened_full * final_mask_3ch + rgb_contrast * (1.0 - final_mask_3ch)).astype(np.uint8)
 
                     writer.append_data(final_frame)
 
@@ -117,7 +158,7 @@ if uploaded_vid is not None:
                 subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                 display_path = final_output_path if os.path.exists(final_output_path) and os.path.getsize(final_output_path) > 0 else video_only_path
 
-                st.success("تمت المعالجة بنجاح بنقاء كامل وبدون تشويش بالخلفية!")
+                st.success("تمت المعالجة بنجاح وسرعة عالية وبدون لمس المناطق الغامقة!")
                 
                 with open(display_path, "rb") as vid_file:
                     st.video(vid_file.read(), format="video/mp4")

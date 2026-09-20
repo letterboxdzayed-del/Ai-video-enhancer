@@ -1,7 +1,6 @@
 import streamlit as st
 import cv2
 import numpy as np
-import imageio
 import imageio_ffmpeg as ffmpeg
 import subprocess
 import os
@@ -44,10 +43,10 @@ uploaded_vid = st.file_uploader("اختر فيديو للرفع (حتى 500 مي
 
 if uploaded_vid is not None:
     input_path = "temp_input.mp4"
-    video_only_path = "temp_no_audio.mp4"
+    processed_temp_path = "temp_processed.mp4"
     final_output_path = "output_enhanced_1080p.mp4"
 
-    for temp_f in [input_path, video_only_path, final_output_path]:
+    for temp_f in [input_path, processed_temp_path, final_output_path]:
         if os.path.exists(temp_f):
             try:
                 os.remove(temp_f)
@@ -64,80 +63,66 @@ if uploaded_vid is not None:
         start_time = time.time()
         with st.spinner("أستغفر الله العظيم - سبحان الله وبحمده - لا إله إلا الله ✨"):
             try:
-                reader = imageio.get_reader(input_path)
-                meta = reader.get_meta_data()
-                fps = int(meta.get('fps', 30))
+                cap = cv2.VideoCapture(input_path)
+                fps = cap.get(cv2.CAP_PROP_FPS)
+                if fps == 0 or np.isnan(fps):
+                    fps = 30.0
 
-                writer = imageio.get_writer(
-                    video_only_path,
-                    fps=fps,
-                    codec='libx264',
-                    ffmpeg_params=['-crf', '18', '-preset', 'ultrafast'],
-                    pixelformat='yuv420p'
-                )
+                width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+                height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
-                clahe = cv2.createCLAHE(clipLimit=1.2, tileGridSize=(8, 8))
+                fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+                out = cv2.VideoWriter(processed_temp_path, fourcc, fps, (width, height))
 
-                for frame in reader:
-                    # 1. تحسين التباين في مساحة LAB
-                    lab = cv2.cvtColor(frame, cv2.COLOR_RGB2LAB)
+                # تحسين تباين موجه ومناسب
+                clahe = cv2.createCLAHE(clipLimit=1.5, tileGridSize=(8, 8))
+
+                while cap.isOpened():
+                    ret, frame = cap.read()
+                    if not ret:
+                        break
+
+                    # 1. تعزيز التباين والألوان في مساحة LAB
+                    lab = cv2.cvtColor(frame, cv2.COLOR_BGR2LAB)
                     l, a, b = cv2.split(lab)
                     l_enhanced = clahe.apply(l)
                     lab_enhanced = cv2.merge([l_enhanced, a, b])
-                    rgb_contrast = cv2.cvtColor(lab_enhanced, cv2.COLOR_LAB2RGB)
+                    rgb_frame = cv2.cvtColor(lab_enhanced, cv2.COLOR_LAB2BGR)
 
-                    # 2. قياس مدى حدة/ضبابية الفريم تلقائياً (Blur/Sharpness Detection)
-                    gray = l_enhanced
-                    laplacian_var = cv2.Laplacian(gray, cv2.CV_64F).var()
+                    # 2. قياس مستوى التوضيح تلقائياً برياضيات سريعة
+                    laplacian_var = cv2.Laplacian(l_enhanced, cv2.CV_64F).var()
 
-                    # حساب نسبة التوضيح الديناميكية تلقائياً حسب الفريم:
-                    # إذا كانت الحدة منخفضة جداً (< 100) يرفع التوضيح، وإذا كانت عالية يققل النسبة
-                    if laplacian_var < 80:
-                        sharp_weight = 1.60
-                    elif laplacian_var < 200:
-                        sharp_weight = 1.35
-                    elif laplacian_var < 500:
-                        sharp_weight = 1.18
+                    if laplacian_var < 100:
+                        sharp_amount = 1.45
+                    elif laplacian_var < 300:
+                        sharp_amount = 1.25
                     else:
-                        sharp_weight = 1.05  # للفيديوهات الحادة جداً لمنع التشويه
+                        sharp_amount = 1.10
 
-                    # 3. حماية البشرة استثناءً
-                    hsv = cv2.cvtColor(frame, cv2.COLOR_RGB2HSV)
-                    h_ch, s_ch = hsv[:, :, 0], hsv[:, :, 1]
-                    skin_mask = (h_ch >= 0) & (h_ch <= 25) & (s_ch >= 20) & (s_ch <= 180)
-                    skin_mask_blur = cv2.GaussianBlur(skin_mask.astype(np.float32), (7, 7), 0)
+                    # 3. توضيح حاد بدون استهلاك كبير للمعالج
+                    blur = cv2.GaussianBlur(rgb_frame, (0, 0), 2.0)
+                    sharpened = cv2.addWeighted(rgb_frame, sharp_amount, blur, -(sharp_amount - 1.0), 0)
 
-                    # 4. الشاربينغ التكيفي حسب النسبة المحسوبة
-                    gaussian = cv2.GaussianBlur(rgb_contrast, (0, 0), 1.6)
-                    sharpened_dyn = cv2.addWeighted(rgb_contrast, sharp_weight, gaussian, -(sharp_weight - 1.0), 0)
-                    
-                    # للوجه نسبة ناعمة لا تتجاوز 1.15
-                    face_weight = min(sharp_weight, 1.15)
-                    sharpened_face = cv2.addWeighted(rgb_contrast, face_weight, gaussian, -(face_weight - 1.0), 0)
+                    # 4. قناع إضاءة سريع لحماية المناطق شديدة الظلمة والأسود من النويز
+                    dark_mask = (l_enhanced > 30).astype(np.uint8)
+                    dark_mask_3ch = cv2.merge([dark_mask, dark_mask, dark_mask])
 
-                    # 5. تطبيق التعديل واستثناء المناطق السوداء الشديدة
-                    skin_3ch = cv2.merge([skin_mask_blur, skin_mask_blur, skin_mask_blur])
-                    final_frame = (sharpened_face * skin_3ch + sharpened_dyn * (1.0 - skin_3ch))
-                    
-                    brightness_mask = (gray > 35).astype(np.float32)
-                    brightness_3ch = cv2.merge([brightness_mask, brightness_mask, brightness_mask])
-                    
-                    final_frame = (final_frame * brightness_3ch + rgb_contrast * (1.0 - brightness_3ch))
-                    final_frame = np.clip(final_frame, 0, 255).astype(np.uint8)
+                    final_frame = np.where(dark_mask_3ch == 1, sharpened, rgb_frame)
 
-                    writer.append_data(final_frame)
+                    out.write(final_frame)
 
-                writer.close()
-                reader.close()
+                cap.release()
+                out.release()
 
+                # دمج الصوت ورفع الدقة عبر FFmpeg بريسيت سريع جداً
                 ffmpeg_exe = ffmpeg.get_ffmpeg_exe()
                 cmd = [
                     ffmpeg_exe, '-y',
-                    '-i', video_only_path,
+                    '-i', processed_temp_path,
                     '-i', input_path,
                     '-vf', "scale='if(gt(ih,iw),-2,1080)':'if(gt(ih,iw),1080,-2)'",
                     '-c:v', 'libx264',
-                    '-crf', '18',
+                    '-crf', '17',
                     '-preset', 'ultrafast',
                     '-pix_fmt', 'yuv420p',
                     '-c:a', 'aac',
@@ -147,7 +132,7 @@ if uploaded_vid is not None:
                 ]
                 
                 subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-                display_path = final_output_path if os.path.exists(final_output_path) and os.path.getsize(final_output_path) > 0 else video_only_path
+                display_path = final_output_path if os.path.exists(final_output_path) and os.path.getsize(final_output_path) > 0 else processed_temp_path
 
                 elapsed_seconds = int(time.time() - start_time)
                 mins = elapsed_seconds // 60

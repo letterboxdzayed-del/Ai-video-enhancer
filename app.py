@@ -5,6 +5,7 @@ import imageio
 import imageio_ffmpeg as ffmpeg
 import subprocess
 import os
+import time
 
 st.set_page_config(
     page_title="Video Enhancer AI - Zayed",
@@ -21,7 +22,7 @@ st.markdown("""
 .stApp { background-color: #08080c !important; color: #ffffff !important; }
 .header-box { text-align: center; padding: 25px 10px 15px 10px; border-bottom: 1px solid rgba(212, 175, 55, 0.3); margin-bottom: 25px; }
 .main-title { font-size: 32px; font-weight: 900; color: #D4AF37; text-shadow: 0 0 12px rgba(212, 175, 55, 0.3); margin-bottom: 6px; direction: ltr; }
-.sub-title { font-size: 15px; color: #e2e8f0; margin-bottom: 15px; direction: rtl; font-weight: 600; }
+.sub-title { font-size: 16px; color: #e2e8f0; margin-bottom: 15px; direction: rtl; font-weight: 600; }
 .author-badge { display: inline-block; background: #121218; border: 1px solid #D4AF37; color: #F3E5AB; padding: 6px 20px; border-radius: 20px; font-size: 15px; font-weight: 800; direction: rtl; }
 .fatima-badge { color: #ff69b4; text-shadow: 0 0 8px rgba(255, 105, 180, 0.4); font-weight: 900; }
 
@@ -34,7 +35,7 @@ section[data-testid="stFileUploadDropzone"] div { color: #ffffff !important; }
 st.markdown("""
 <div class="header-box">
     <div class="main-title">Video Enhancer AI - Zayed</div>
-    <div class="sub-title">محرك المعالجة التكيفية فائقة السرعة مع استثناء المناطق الغامقة من الشاربينغ</div>
+    <div class="sub-title">تحسين جودة الفيديوهات</div>
     <div class="author-badge">تطوير: زايد العبادي | <span class="fatima-badge">فاطمة 🩷</span></div>
 </div>
 """, unsafe_allow_html=True)
@@ -59,8 +60,9 @@ if uploaded_vid is not None:
     st.caption("الفيديو الأصلي:")
     st.video(input_path)
 
-    if st.button("بدء المعالجة الذكية السريعة ⚡", key="btn_vid"):
-        with st.spinner("جاري التعديل السريع والتكيفي بدون تشويش للأسود... 🤍 (أستغفر الله العظيم - سبحان الله وبحمده - لا إله إلا الله) ✨"):
+    if st.button("بدء المعالجة ⚡", key="btn_vid"):
+        start_time = time.time()
+        with st.spinner("أستغفر الله العظيم - سبحان الله وبحمده - لا إله إلا الله ✨"):
             try:
                 reader = imageio.get_reader(input_path)
                 meta = reader.get_meta_data()
@@ -75,64 +77,53 @@ if uploaded_vid is not None:
                 )
 
                 clahe = cv2.createCLAHE(clipLimit=1.2, tileGridSize=(8, 8))
-                
-                # متغيرات التنعيم الزمني لمنع الانتقال المفاجئ بين الفريمات
-                smooth_sat_factor = 1.0
-                smooth_val_factor = 1.0
 
                 for frame in reader:
-                    # 1. التحويل إلى HSV لمعالجة التشبع والإضاءة بكل نقطة
-                    hsv = cv2.cvtColor(frame, cv2.COLOR_RGB2HSV).astype(np.float32)
-                    h, s, v = hsv[:, :, 0], hsv[:, :, 1], hsv[:, :, 2]
-
-                    # حساب معدلات الفريم لمنع التغير المفاجئ
-                    mean_s = np.mean(s)
-                    mean_v = np.mean(v)
-
-                    target_sat = 1.12 if mean_s < 80 else (1.05 if mean_s < 120 else 1.0)
-                    target_val = 1.05 if mean_v < 100 else 1.0
-
-                    # التنعيم بين الفريمات (Smooth Transition)
-                    smooth_sat_factor = 0.85 * smooth_sat_factor + 0.15 * target_sat
-                    smooth_val_factor = 0.85 * smooth_val_factor + 0.15 * target_val
-
-                    # تعديل التشبع والسطوع التكيفي لكل نقطة
-                    s_boosted = s * smooth_sat_factor
-                    v_boosted = v * smooth_val_factor
-
-                    s_final = np.clip(s_boosted, 0, 255).astype(np.uint8)
-                    v_final = np.clip(v_boosted, 0, 255).astype(np.uint8)
-
-                    hsv_adapted = cv2.merge([h.astype(np.uint8), s_final, v_final])
-                    rgb_adapted = cv2.cvtColor(hsv_adapted, cv2.COLOR_HSV2RGB)
-
-                    # 2. موازنة التباين الموضعي (Contrast)
-                    lab = cv2.cvtColor(rgb_adapted, cv2.COLOR_RGB2LAB)
+                    # 1. تحسين التباين في مساحة LAB
+                    lab = cv2.cvtColor(frame, cv2.COLOR_RGB2LAB)
                     l, a, b = cv2.split(lab)
                     l_enhanced = clahe.apply(l)
                     lab_enhanced = cv2.merge([l_enhanced, a, b])
                     rgb_contrast = cv2.cvtColor(lab_enhanced, cv2.COLOR_LAB2RGB)
 
-                    # 3. الشاربينغ الذكي واستثناء المناطق الغامقة والأسود
-                    gray = cv2.cvtColor(rgb_contrast, cv2.COLOR_RGB2GRAY)
+                    # 2. قياس مدى حدة/ضبابية الفريم تلقائياً (Blur/Sharpness Detection)
+                    gray = l_enhanced
+                    laplacian_var = cv2.Laplacian(gray, cv2.CV_64F).var()
 
-                    # قناع استثناء الأسود والألوان الغامقة (المناطق الداكنة < 45 لا يمسها الشاربينغ)
-                    brightness_mask = cv2.threshold(gray, 45, 255, cv2.THRESH_BINARY)[1].astype(np.float32) / 255.0
-                    brightness_mask = cv2.GaussianBlur(brightness_mask, (5, 5), 0)
+                    # حساب نسبة التوضيح الديناميكية تلقائياً حسب الفريم:
+                    # إذا كانت الحدة منخفضة جداً (< 100) يرفع التوضيح، وإذا كانت عالية يققل النسبة
+                    if laplacian_var < 80:
+                        sharp_weight = 1.60
+                    elif laplacian_var < 200:
+                        sharp_weight = 1.35
+                    elif laplacian_var < 500:
+                        sharp_weight = 1.18
+                    else:
+                        sharp_weight = 1.05  # للفيديوهات الحادة جداً لمنع التشويه
 
-                    # حواف Canny حادة وقوية للتفاصيل الواضحة فقط
-                    edges = cv2.Canny(gray, 60, 150).astype(np.float32) / 255.0
-                    edges_blur = cv2.GaussianBlur(edges, (3, 3), 0)
+                    # 3. حماية البشرة استثناءً
+                    hsv = cv2.cvtColor(frame, cv2.COLOR_RGB2HSV)
+                    h_ch, s_ch = hsv[:, :, 0], hsv[:, :, 1]
+                    skin_mask = (h_ch >= 0) & (h_ch <= 25) & (s_ch >= 20) & (s_ch <= 180)
+                    skin_mask_blur = cv2.GaussianBlur(skin_mask.astype(np.float32), (7, 7), 0)
 
-                    # حساب الشاربينغ الممتاز (1.4)
-                    gaussian = cv2.GaussianBlur(rgb_contrast, (0, 0), 1.8)
-                    sharpened_full = cv2.addWeighted(rgb_contrast, 1.40, gaussian, -0.40, 0)
+                    # 4. الشاربينغ التكيفي حسب النسبة المحسوبة
+                    gaussian = cv2.GaussianBlur(rgb_contrast, (0, 0), 1.6)
+                    sharpened_dyn = cv2.addWeighted(rgb_contrast, sharp_weight, gaussian, -(sharp_weight - 1.0), 0)
+                    
+                    # للوجه نسبة ناعمة لا تتجاوز 1.15
+                    face_weight = min(sharp_weight, 1.15)
+                    sharpened_face = cv2.addWeighted(rgb_contrast, face_weight, gaussian, -(face_weight - 1.0), 0)
 
-                    # دمج الأقنعة: حواف الشاربينغ مضروبة في قناع الإضاءة (تجاهل الغامق تماماً)
-                    final_mask = edges_blur * brightness_mask
-                    final_mask_3ch = cv2.merge([final_mask, final_mask, final_mask])
-
-                    final_frame = (sharpened_full * final_mask_3ch + rgb_contrast * (1.0 - final_mask_3ch)).astype(np.uint8)
+                    # 5. تطبيق التعديل واستثناء المناطق السوداء الشديدة
+                    skin_3ch = cv2.merge([skin_mask_blur, skin_mask_blur, skin_mask_blur])
+                    final_frame = (sharpened_face * skin_3ch + sharpened_dyn * (1.0 - skin_3ch))
+                    
+                    brightness_mask = (gray > 35).astype(np.float32)
+                    brightness_3ch = cv2.merge([brightness_mask, brightness_mask, brightness_mask])
+                    
+                    final_frame = (final_frame * brightness_3ch + rgb_contrast * (1.0 - brightness_3ch))
+                    final_frame = np.clip(final_frame, 0, 255).astype(np.uint8)
 
                     writer.append_data(final_frame)
 
@@ -158,7 +149,12 @@ if uploaded_vid is not None:
                 subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                 display_path = final_output_path if os.path.exists(final_output_path) and os.path.getsize(final_output_path) > 0 else video_only_path
 
-                st.success("تمت المعالجة بنجاح وسرعة عالية وبدون لمس المناطق الغامقة!")
+                elapsed_seconds = int(time.time() - start_time)
+                mins = elapsed_seconds // 60
+                secs = elapsed_seconds % 60
+                
+                time_str = f"{mins} min and {secs} sec" if mins > 0 else f"{secs} sec"
+                st.success(f"Worked for {time_str}")
                 
                 with open(display_path, "rb") as vid_file:
                     st.video(vid_file.read(), format="video/mp4")

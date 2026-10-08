@@ -26,17 +26,20 @@ if api_token:
         st.video(uploaded_video)
 
         if st.button("بدء تحسين الفيديو 🚀"):
-            with st.spinner("جاري معالجة الفيديو على السيرفر... قد يستغرق ذلك دقيقة أو دقيقتين"):
+            with st.spinner("جاري جلب أحدث نسخة من الموديل ومعالجة الفيديو على السيرفر..."):
                 try:
                     # حفظ الفيديو في ملف مؤقت
                     with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as tmp_file:
                         tmp_file.write(uploaded_video.read())
                         tmp_video_path = tmp_file.name
 
-                    # استدعى الموديل باسمه المباشر لضمان العمل على أحدث نسخة بدون أخطاء 422
+                    # جلب أحدث نسخة معتمدة تلقائياً لمنع أخطاء 404 و 422
+                    model = replicate.models.get("lucataco/video-upscaler")
+                    latest_version = model.latest_version.id
+
                     with open(tmp_video_path, "rb") as video_file:
                         output = replicate.run(
-                            "lucataco/video-upscaler",
+                            f"lucataco/video-upscaler:{latest_version}",
                             input={
                                 "video": video_file,
                                 "scale": 2
@@ -47,7 +50,6 @@ if api_token:
                     st.video(output)
                     st.markdown(f"[📥 اضغط هنا لتحميل الفيديو المعدل]({output})")
 
-                    # مسح الملف المؤقت
                     os.remove(tmp_video_path)
 
                 except Exception as e:

@@ -8,16 +8,14 @@ st.set_page_config(page_title="AI Video Enhancer", page_icon="🎬", layout="cen
 st.title("🎬 AI Video Quality Enhancer")
 st.write("رفع جودة وتوضيح الفيديوهات بالذكاء الاصطناعي")
 
-# 1. قراءة التوكن تلقائياً من Streamlit Secrets إذا كان موجوداً
+# 1. قراءة التوكن تلقائياً من Secrets أو من الشريط الجانبي
 api_token = st.secrets.get("REPLICATE_API_TOKEN", "")
-
-# 2. إمكانية إدخاله أو تعديله من الشريط الجانبي (اختياري)
 user_token = st.sidebar.text_input("Replicate API Token:", value=api_token, type="password")
 
 if user_token:
     api_token = user_token
 
-# 3. التحقق والتشغيل
+# 2. التشغيل عند توفر التوكن
 if api_token:
     os.environ["REPLICATE_API_TOKEN"] = api_token
 
@@ -28,15 +26,17 @@ if api_token:
         st.video(uploaded_video)
 
         if st.button("بدء تحسين الفيديو 🚀"):
-            with st.spinner("جاري رفع الفيديو ومعالجته على السيرفر... قد يستغرق ذلك بضعة دقائق"):
+            with st.spinner("جاري معالجة الفيديو على السيرفر... قد يستغرق ذلك دقيقة أو دقيقتين"):
                 try:
+                    # حفظ الفيديو في ملف مؤقت
                     with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as tmp_file:
                         tmp_file.write(uploaded_video.read())
                         tmp_video_path = tmp_file.name
 
+                    # استدعى الموديل باسمه المباشر لضمان العمل على أحدث نسخة بدون أخطاء 422
                     with open(tmp_video_path, "rb") as video_file:
                         output = replicate.run(
-                            "lucataco/video-upscaler:df010214878b30f81a700863004a4aa8e08dcd37c157f12e5e1a3bc4743b1778",
+                            "lucataco/video-upscaler",
                             input={
                                 "video": video_file,
                                 "scale": 2
@@ -47,6 +47,7 @@ if api_token:
                     st.video(output)
                     st.markdown(f"[📥 اضغط هنا لتحميل الفيديو المعدل]({output})")
 
+                    # مسح الملف المؤقت
                     os.remove(tmp_video_path)
 
                 except Exception as e:
